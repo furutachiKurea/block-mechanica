@@ -25,7 +25,7 @@ func setupRouter(v1 *echo.Group, h *handler.Handler) {
 		cluster.GET("/connect-infos", h.GetConnectInfo)
 		cluster.GET("/:service-id", h.GetClusterDetail)
 		cluster.PUT("/:service-id", h.ExpansionCluster)
-		cluster.PUT("/:service-id/backuper-schedules", h.ReScheduleBackup)
+		cluster.PUT("/:service-id/backup-schedules", h.ReScheduleBackup)
 		cluster.GET("/:service-id/backups", h.GetBackups)
 		cluster.POST("/:service-id/backups", h.CreateBackup)
 		cluster.DELETE("/:service-id/backups", h.DeleteBackups)
