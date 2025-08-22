@@ -83,7 +83,7 @@ spec:
       serviceAccountName: block-mechanica-sa
       containers:
         - name: block-mechanica
-          image: 10.135.115.1:5000/block-mechanica:0.9.0
+          image: crpi-aoz6mrz2bbre0gxx.cn-hangzhou.personal.cr.aliyuncs.com/block-mechanica/block-mechanica:0.9.0
           ports:
             - containerPort: 8080
           envFrom:
