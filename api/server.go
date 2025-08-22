@@ -38,7 +38,7 @@ func (r *APIServer) Start(ctx context.Context) error {
 
 // NeedLeaderElection 实现 manager.LeaderElectionRunnable
 func (r *APIServer) NeedLeaderElection() bool {
-	return true
+	return false
 }
 
 // RegisterServer 创建 APIServer 并注册至 manager

@@ -10,6 +10,7 @@ import (
 	opsv1alpha1 "github.com/apecloud/kubeblocks/apis/operations/v1alpha1"
 	"github.com/furutachiKurea/block-mechanica/api"
 	"github.com/furutachiKurea/block-mechanica/controller"
+	"github.com/furutachiKurea/block-mechanica/internal/config"
 	"github.com/furutachiKurea/block-mechanica/internal/index"
 	"github.com/furutachiKurea/block-mechanica/service"
 	appsv1 "k8s.io/api/apps/v1"
@@ -18,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
 var _scheme = runtime.NewScheme()
@@ -35,11 +37,16 @@ func init() {
 //
 // 设置 logger 为 zap
 func NewManager() (ctrl.Manager, error) {
+	enableLeaderElection := !config.InDevelopment()
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                  _scheme,
-		LeaderElection:          true,
+		LeaderElection:          enableLeaderElection,
 		LeaderElectionID:        "block-mechanica-leader-election",
 		LeaderElectionNamespace: "rbd-system",
+		Metrics: server.Options{
+			BindAddress: ":9090",
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create manager: %w", err)
