@@ -58,6 +58,10 @@ flowchart TD
     └── 📁 coordinator/
 ```
 
+## 如何部署
+
+使用 `make image` 命令构建镜像，然后推送到你的镜像仓库，修改 [deploy.yaml](./deploy/k8s/deploy.yaml) 中的镜像地址，运行 `make deploy`
+
 ## Make
 
 - 构建 Docker 镜像（默认标签 latest）
