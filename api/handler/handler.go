@@ -53,7 +53,7 @@ func (h *Handler) GetBackupRepos(c echo.Context) error {
 	ctx := c.Request().Context()
 	repos, err := h.svc.ListAvailableBackupRepos(ctx)
 	if err != nil {
-		return res.InternalError(fmt.Errorf("list available backuper repos: %w", err))
+		return res.InternalError(fmt.Errorf("list available backup repos: %w", err))
 	}
 	return res.ReturnSuccess(c, repos)
 }
@@ -241,7 +241,7 @@ func (h *Handler) ExpansionCluster(c echo.Context) error {
 
 // ReScheduleBackup 重新调度 KubeBlocks 数据库集群的备份配置
 //
-// PUT /v1/clusters/:service-id/backuper-schedules
+// PUT /v1/clusters/:service-id/backup-schedules
 func (h *Handler) ReScheduleBackup(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -260,7 +260,7 @@ func (h *Handler) ReScheduleBackup(c echo.Context) error {
 	}
 
 	if err := h.svc.ReScheduleBackup(ctx, schedule); err != nil {
-		return res.InternalError(fmt.Errorf("reschedule backuper: %w", err))
+		return res.InternalError(fmt.Errorf("reschedule backupe: %w", err))
 	}
 
 	return res.ReturnSuccess(c, "Done")
@@ -283,7 +283,7 @@ func (h *Handler) GetBackups(c echo.Context) error {
 
 	backups, err := h.svc.ListBackups(ctx, backupListReq)
 	if err != nil {
-		return res.InternalError(fmt.Errorf("get backuper list: %w", err))
+		return res.InternalError(fmt.Errorf("get backup list: %w", err))
 	}
 
 	return res.ReturnSuccess(c, backups)

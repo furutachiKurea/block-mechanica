@@ -75,7 +75,7 @@ func (s *BackupService) ReScheduleBackup(ctx context.Context, schedule model.Bac
 			disabled := false
 			patchData = map[string]any{
 				"spec": map[string]any{
-					"backuper": map[string]any{
+					"backup": map[string]any{
 						"enabled": &disabled,
 					},
 				},
@@ -87,7 +87,7 @@ func (s *BackupService) ReScheduleBackup(ctx context.Context, schedule model.Bac
 			enabled := true
 			patchData = map[string]any{
 				"spec": map[string]any{
-					"backuper": map[string]any{
+					"backup": map[string]any{
 						"repoName":        schedule.BackupRepo,
 						"enabled":         &enabled,
 						"cronExpression":  schedule.Schedule.Cron(),
@@ -124,7 +124,7 @@ func (s *BackupService) ReScheduleBackup(ctx context.Context, schedule model.Bac
 			if hasChanges {
 				patchData = map[string]any{
 					"spec": map[string]any{
-						"backuper": backupPatch,
+						"backup": backupPatch,
 					},
 				}
 				needUpdate = true
@@ -141,9 +141,9 @@ func (s *BackupService) ReScheduleBackup(ctx context.Context, schedule model.Bac
 		return fmt.Errorf("marshal patch data: %w", err)
 	}
 
-	// Patch backuper 配置
+	// Patch backup 配置
 	if err := s.client.Patch(ctx, cluster, client.RawPatch(types.MergePatchType, patchBytes)); err != nil {
-		return fmt.Errorf("patch cluster backuper configuration: %w", err)
+		return fmt.Errorf("patch cluster backup configuration: %w", err)
 	}
 
 	return nil
