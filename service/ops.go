@@ -23,7 +23,7 @@ var (
 	opsLifeAfterUnsuccess int32 = 1 * 60 * 60
 	opsLifeAfterSucceed   int32 = 24 * 60 * 60
 
-	defaultBackupDeletionPolicy string = "Retain"
+	defaultBackupDeletionPolicy string = "Delete"
 )
 
 const (

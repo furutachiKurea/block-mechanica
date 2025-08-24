@@ -322,6 +322,8 @@ func (h *Handler) DeleteBackups(c echo.Context) error {
 		return res.BadRequest(fmt.Errorf("bind request: %w", err))
 	}
 
+	log.Info("Wanted to delete backups", log.Any("backups", req.Backups))
+
 	rbdService := model.RBDService{
 		ServiceID: req.ServiceID,
 	}
@@ -330,6 +332,8 @@ func (h *Handler) DeleteBackups(c echo.Context) error {
 	if err != nil {
 		return res.InternalError(fmt.Errorf("delete backups: %w", err))
 	}
+
+	log.Info("Deleted backups", log.Any("deleted", deleted))
 
 	return res.ReturnSuccess(c, deleted)
 }

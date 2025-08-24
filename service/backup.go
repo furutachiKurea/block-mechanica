@@ -33,6 +33,11 @@ type BackupItem struct {
 	Time   time.Time                `json:"time"`
 }
 
+// 删除备份时的拒绝原因
+const (
+	ReasonBackupRunning = "备份正在执行中，无法删除"
+)
+
 // BackupService 提供 BackupRepo 相关操作
 // 依赖 controller-runtime client
 type BackupService struct {
@@ -289,6 +294,11 @@ func (s *BackupService) DeleteBackups(ctx context.Context, rbd model.RBDService,
 			continue
 		}
 
+		if canDelete, reason := s.canDeleteBackup(backup); !canDelete {
+			log.Info("备份无法删除", log.String("backup", name), log.String("reason", reason))
+			continue
+		}
+
 		if err := s.client.Delete(ctx, backup); err != nil {
 			if apierrors.IsNotFound(err) {
 				deleted = append(deleted, name)
@@ -299,11 +309,19 @@ func (s *BackupService) DeleteBackups(ctx context.Context, rbd model.RBDService,
 			continue
 		}
 
-		log.Info("备份删除成功", log.String("backup", name), log.String("cluster", cluster.Name))
 		deleted = append(deleted, name)
 	}
 
 	return deleted, nil
+}
+
+// canDeleteBackup 检查备份是否可以安全删除
+func (s *BackupService) canDeleteBackup(backup *datav1alpha1.Backup) (bool, string) {
+	if backup.Status.Phase == datav1alpha1.BackupPhaseRunning {
+		return false, ReasonBackupRunning
+	}
+
+	return true, ""
 }
 
 // sortBackupsByTime 按时间倒序排列备份
