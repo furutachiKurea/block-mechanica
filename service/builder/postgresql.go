@@ -39,7 +39,7 @@ func (b PostgreBuilder) BuildCluster(ctx context.Context, req model.ClusterInput
 	if cluster.Spec.ComponentSpecs[0].Labels == nil {
 		cluster.Spec.ComponentSpecs[0].Labels = make(map[string]string)
 	}
-	cluster.Spec.ComponentSpecs[0].Labels["apps.kubeblocks.postgres.patroni/scope"] = fmt.Sprintf("%s-postgresql", req.Name)
+	cluster.Spec.ComponentSpecs[0].Labels["apps.kubeblocks.postgres.patroni/scope"] = fmt.Sprintf("%s-postgresql", cluster.Name)
 
 	// Backup
 	if cluster.Spec.Backup != nil {
