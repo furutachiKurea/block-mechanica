@@ -9,6 +9,7 @@ import (
 
 	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
 	opsv1alpha1 "github.com/apecloud/kubeblocks/apis/operations/v1alpha1"
+	workloadsv1 "github.com/apecloud/kubeblocks/apis/workloads/v1"
 	"github.com/apecloud/kubeblocks/pkg/constant"
 	"github.com/furutachiKurea/block-mechanica/internal/index"
 	"github.com/furutachiKurea/block-mechanica/internal/log"
@@ -211,7 +212,7 @@ func (s *ClusterService) GetClusterDetail(ctx context.Context, rbd model.RBDServ
 		return nil, err
 	}
 
-	podList, err := s.getClusterPods(ctx, cluster.Name, cluster.Namespace)
+	podList, err := s.getClusterPods(ctx, cluster)
 	if err != nil {
 		return nil, fmt.Errorf("get cluster pods: %w", err)
 	}
@@ -634,10 +635,33 @@ func (s *ClusterService) handleVolumeExpansion(ctx context.Context, scalingCtx m
 }
 
 // getClusterPods 获取 Cluster 相关的 Pod 状态信息
-func (s *ClusterService) getClusterPods(ctx context.Context, clusterName, namespace string) ([]model.PodStatus, error) {
-	pods, err := getPodsByIndex(ctx, s.client, clusterName, namespace)
+func (s *ClusterService) getClusterPods(ctx context.Context, cluster *kbappsv1.Cluster) ([]model.PodStatus, error) {
+	componentName, err := extractComponentName(cluster)
 	if err != nil {
-		return nil, fmt.Errorf("get pods by index: %w", err)
+		return nil, err
+	}
+
+	// 通过 InstanceSet 获取 Pod
+	instanceSet, err := getInstanceSetByCluster(ctx, s.client, cluster.Name, cluster.Namespace, componentName)
+	if err != nil {
+		if errors.Is(err, ErrTargetNotFound) {
+			// InstanceSet 不存在时返回空列表，而不是错误
+			log.Info("InstanceSet not found, returning empty pod list",
+				log.String("cluster", cluster.Name),
+				log.String("component", componentName))
+			return []model.PodStatus{}, nil
+		}
+		return nil, fmt.Errorf("get instanceset: %w", err)
+	}
+
+	var podNames []string
+	for _, instanceStatus := range instanceSet.Status.InstanceStatus {
+		podNames = append(podNames, instanceStatus.PodName)
+	}
+
+	pods, err := getPodsByNames(ctx, s.client, podNames, cluster.Namespace)
+	if err != nil {
+		return nil, fmt.Errorf("get pods by names: %w", err)
 	}
 
 	result := make([]model.PodStatus, 0, len(pods))
@@ -648,21 +672,72 @@ func (s *ClusterService) getClusterPods(ctx context.Context, clusterName, namesp
 	return result, nil
 }
 
-// getPodsByIndex 使用索引查询 Pod，失败时回退到标签查询
-func getPodsByIndex(ctx context.Context, c client.Client, clusterName, namespace string) ([]corev1.Pod, error) {
-	var podList corev1.PodList
-
-	indexKey := fmt.Sprintf("%s/%s", namespace, clusterName)
-	if err := c.List(ctx, &podList, client.MatchingFields{index.NamespaceInstanceField: indexKey}); err == nil {
-		return podList.Items, nil
+// extractComponentName 从 Cluster 中提取组件名称
+func extractComponentName(cluster *kbappsv1.Cluster) (string, error) {
+	if len(cluster.Spec.ComponentSpecs) == 0 {
+		return "", fmt.Errorf("cluster %s/%s has no componentSpecs", cluster.Namespace, cluster.Name)
 	}
 
-	selector := client.MatchingLabels{constant.AppInstanceLabelKey: clusterName}
-	if err := c.List(ctx, &podList, selector, client.InNamespace(namespace)); err != nil {
-		return nil, fmt.Errorf("list pods for cluster %s: %w", clusterName, err)
+	componentName := cluster.Spec.ComponentSpecs[0].Name
+	if componentName == "" {
+		componentName = cluster.Spec.ClusterDef
+	}
+	return componentName, nil
+}
+
+// getInstanceSetByCluster 通过 cluster 和 component 获取 InstanceSet
+func getInstanceSetByCluster(ctx context.Context, c client.Client, clusterName, namespace, componentName string) (*workloadsv1.InstanceSet, error) {
+	var instanceSetList workloadsv1.InstanceSetList
+
+	// 优先使用索引查询
+	indexKey := fmt.Sprintf("%s/%s/%s", namespace, clusterName, componentName)
+	if err := c.List(ctx, &instanceSetList, client.MatchingFields{index.NamespaceClusterComponentField: indexKey}); err == nil {
+		switch len(instanceSetList.Items) {
+		case 0:
+			return nil, ErrTargetNotFound
+		case 1:
+			return &instanceSetList.Items[0], nil
+		default:
+			return nil, ErrMultipleFounded
+		}
+	} else {
+		log.Warn("Index query failed, falling back to label query",
+			log.String("indexKey", indexKey), log.Err(err))
 	}
 
-	return podList.Items, nil
+	// 回退到标签查询
+	selector := client.MatchingLabels{
+		constant.AppInstanceLabelKey:        clusterName,
+		"apps.kubeblocks.io/component-name": componentName,
+	}
+	if err := c.List(ctx, &instanceSetList, selector, client.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("list instanceset for cluster %s component %s: %w", clusterName, componentName, err)
+	}
+
+	switch len(instanceSetList.Items) {
+	case 0:
+		return nil, ErrTargetNotFound
+	case 1:
+		return &instanceSetList.Items[0], nil
+	default:
+		return nil, ErrMultipleFounded
+	}
+}
+
+// getPodsByNames 根据 Pod 名称列表查询 Pod
+func getPodsByNames(ctx context.Context, c client.Client, podNames []string, namespace string) ([]corev1.Pod, error) {
+	var pods []corev1.Pod
+
+	for _, podName := range podNames {
+		var pod corev1.Pod
+		if err := c.Get(ctx, client.ObjectKey{Name: podName, Namespace: namespace}, &pod); err != nil {
+			log.Warn("Failed to get pod", log.String("pod", podName), log.Err(err))
+			continue
+		}
+		pods = append(pods, pod)
+	}
+
+	return pods, nil
 }
 
 // buildPodStatus 构建 Pod 状态信息

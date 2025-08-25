@@ -10,6 +10,7 @@ import (
 	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
 	datav1alpha1 "github.com/apecloud/kubeblocks/apis/dataprotection/v1alpha1"
 	opv1alpha1 "github.com/apecloud/kubeblocks/apis/operations/v1alpha1"
+	workloadsv1 "github.com/apecloud/kubeblocks/apis/workloads/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -32,6 +33,10 @@ const (
 	// NamespaceClusterOpsTypeField namespace/cluster/opsType，
 	// 用于索引 OpsRequest
 	NamespaceClusterOpsTypeField = "index.namespace.cluster.opsType"
+
+	// NamespaceClusterComponentField namespace/cluster/component，
+	// 用于索引 InstanceSet
+	NamespaceClusterComponentField = "index.namespace.cluster.component"
 )
 
 // Register 在缓存注册字段索引。
@@ -92,6 +97,19 @@ func Register(ctx context.Context, mgr ctrl.Manager) error {
 	if err := indexer.IndexField(ctx, &opv1alpha1.OpsRequest{}, NamespaceClusterOpsTypeField, func(obj client.Object) []string {
 		ops := obj.(*opv1alpha1.OpsRequest)
 		return []string{fmt.Sprintf("%s/%s/%s", ops.Namespace, ops.Spec.ClusterName, ops.Spec.Type)}
+	}); err != nil {
+		return err
+	}
+
+	// 为 InstanceSet 按 namespace/cluster/component 建立索引
+	if err := indexer.IndexField(ctx, &workloadsv1.InstanceSet{}, NamespaceClusterComponentField, func(obj client.Object) []string {
+		instanceSet := obj.(*workloadsv1.InstanceSet)
+		if clusterName, ok := instanceSet.Labels[InstanceLabel]; ok && clusterName != "" {
+			if componentName, ok := instanceSet.Labels["apps.kubeblocks.io/component-name"]; ok {
+				return []string{fmt.Sprintf("%s/%s/%s", instanceSet.Namespace, clusterName, componentName)}
+			}
+		}
+		return nil
 	}); err != nil {
 		return err
 	}
