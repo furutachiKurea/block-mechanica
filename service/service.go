@@ -114,9 +114,9 @@ type Cluster interface {
 	CancelClusterCreate(ctx context.Context, rbd model.RBDService) error
 
 	// GetConnectInfo 获取指定 Cluster 的连接账户信息,
-	// 从 Kubernetes Secret 中获取 root 账户的用户名和密码
+	// 从 Kubernetes Secret 中获取数据库账户的用户名和密码
 	//
-	// Secret 命名规则: {clustername}-{clustertype}-account-root
+	// Secret 名称由对应数据库类型的 Coordinator 适配器生成
 	GetConnectInfo(ctx context.Context, rbd model.RBDService) ([]model.ConnectInfo, error)
 
 	// GetClusterDetail 通过 RBDService.ID 获取 Cluster 的详细信息

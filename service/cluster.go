@@ -141,16 +141,21 @@ func (s *ClusterService) associateToKubeBlocksComponent(ctx context.Context, clu
 }
 
 // GetConnectInfo 获取指定 Cluster 的连接账户信息,
-// 从 Kubernetes Secret 中获取 root 账户的用户名和密码
+// 从 Kubernetes Secret 中获取数据库账户的用户名和密码
 //
-// Secret 命名规则: {clustername}-{clustertype}-account-root
+// Secret 名称由对应数据库类型的 Coordinator 适配器生成
 func (s *ClusterService) GetConnectInfo(ctx context.Context, rbd model.RBDService) ([]model.ConnectInfo, error) {
 	cluster, err := getClusterByServiceID(ctx, s.client, rbd.ServiceID)
 	if err != nil {
 		return nil, fmt.Errorf("get cluster by service_id %s: %w", rbd.ServiceID, err)
 	}
 
-	secretName := fmt.Sprintf("%s-%s-account-root", cluster.Name, clusterType(cluster))
+	dbType := clusterType(cluster)
+	clusterAdapter, ok := _clusterRegistry[dbType]
+	if !ok {
+		return nil, fmt.Errorf("unsupported cluster type: %s", dbType)
+	}
+	secretName := clusterAdapter.Coordinator.GetSecretName(cluster.Name)
 
 	secret := &corev1.Secret{}
 	err = wait.PollUntilContextCancel(ctx, 2*time.Second, true, func(ctx context.Context) (bool, error) {

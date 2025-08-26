@@ -1,6 +1,10 @@
 package coordinator
 
-import "github.com/furutachiKurea/block-mechanica/service/adapter"
+import (
+	"fmt"
+
+	"github.com/furutachiKurea/block-mechanica/service/adapter"
+)
 
 var _ adapter.Coordinator = &PostgreSQLCoordinator{}
 
@@ -11,4 +15,9 @@ type PostgreSQLCoordinator struct {
 
 func (c *PostgreSQLCoordinator) TargetPort() int {
 	return 5432
+}
+
+func (c *PostgreSQLCoordinator) GetSecretName(clusterName string) string {
+	// PostgreSQL 使用 postgresql 作为中间部分和 postgres 作为账户类型
+	return fmt.Sprintf("%s-postgresql-account-postgres", clusterName)
 }

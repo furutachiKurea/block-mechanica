@@ -29,6 +29,9 @@ type Coordinator interface {
 	// TargetPort 返回 KubeBlocks Cluster 的连接端口，
 	// 用于配置 KubeBlocksComponent 将连接转发至 Cluster 的 service
 	TargetPort() int
+
+	// GetSecretName 返回该数据库类型的 Secret 命名格式
+	GetSecretName(clusterName string) string
 }
 
 // Backuper 提供数据库类型特化的备份配置
