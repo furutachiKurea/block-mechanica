@@ -100,7 +100,9 @@ type Cluster interface {
 	// 以确保将来自其他 Rainbond 组件的连接请求转发至该 Cluster 的 Service 上;
 	// 同时，通过将 service_id 添加至 Cluster 的 labels 中以关联 KubeBlocks Component 与 Cluster,
 	// Rainbond 也通过这层关系来判断 Rainbond 组件是否为 KubeBlocks Component
-	CreateCluster(ctx context.Context, cluster model.ClusterInput) error
+	//
+	// 返回成功创建的 KubeBlocks Cluster 实例
+	CreateCluster(ctx context.Context, cluster model.ClusterInput) (*kbappsv1.Cluster, error)
 
 	// DeleteCluster 删除 KubeBlocks 数据库集群
 	//
@@ -215,7 +217,7 @@ func (s *DefaultServices) DeleteBackups(ctx context.Context, rbd model.RBDServic
 
 // Cluster
 
-func (s *DefaultServices) CreateCluster(ctx context.Context, cluster model.ClusterInput) error {
+func (s *DefaultServices) CreateCluster(ctx context.Context, cluster model.ClusterInput) (*kbappsv1.Cluster, error) {
 	return s.Cluster.CreateCluster(ctx, cluster)
 }
 func (s *DefaultServices) GetConnectInfo(ctx context.Context, rbd model.RBDService) ([]model.ConnectInfo, error) {

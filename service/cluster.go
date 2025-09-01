@@ -44,31 +44,33 @@ func NewClusterService(c client.Client) *ClusterService {
 //
 // 通过将 service_id 添加至 Cluster 的 labels 中以关联 KubeBlocks Component 与 Cluster,
 // 同时，Rainbond 也通过这层关系来判断 Rainbond 组件是否为 KubeBlocks Component
-func (s *ClusterService) CreateCluster(ctx context.Context, c model.ClusterInput) error {
+//
+// 返回成功创建的 KubeBlocks Cluster 实例
+func (s *ClusterService) CreateCluster(ctx context.Context, c model.ClusterInput) (*kbappsv1.Cluster, error) {
 	if c.Name == "" {
-		return fmt.Errorf("name is required")
+		return nil, fmt.Errorf("name is required")
 	}
 
 	clusterAdapter, ok := _clusterRegistry[c.Type]
 	if !ok {
-		return fmt.Errorf("unsupported cluster type: %s", c.Type)
+		return nil, fmt.Errorf("unsupported cluster type: %s", c.Type)
 	}
 
 	cluster, err := clusterAdapter.Builder.BuildCluster(ctx, c)
 	if err != nil {
-		return fmt.Errorf("build %s cluster: %w", c.Type, err)
+		return nil, fmt.Errorf("build %s cluster: %w", c.Type, err)
 	}
 
 	if err := s.client.Create(ctx, cluster); err != nil {
-		return fmt.Errorf("create cluster: %w", err)
+		return nil, fmt.Errorf("create cluster: %w", err)
 	}
 
 	c.Name = cluster.Name
 	if err := s.associateToKubeBlocksComponent(ctx, cluster, c); err != nil {
-		return fmt.Errorf("associate to rainbond component: %w", err)
+		return nil, fmt.Errorf("associate to rainbond component: %w", err)
 	}
 
-	return nil
+	return cluster, nil
 }
 
 // AssociateToKubeBlocksComponent 将 KubeBlocks 组件和 Cluster 通过 service_id 关联

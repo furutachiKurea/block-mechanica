@@ -103,11 +103,12 @@ func (h *Handler) CreateCluster(c echo.Context) error {
 		},
 	}
 
-	if err := h.svc.CreateCluster(ctx, modelReq); err != nil {
+	cluster, err := h.svc.CreateCluster(ctx, modelReq)
+	if err != nil {
 		return res.InternalError(fmt.Errorf("create cluster: %w", err))
 	}
 
-	return res.ReturnSuccess(c, "Done")
+	return res.ReturnSuccess(c, cluster)
 }
 
 // CancelClusterCreate 取消集群创建
