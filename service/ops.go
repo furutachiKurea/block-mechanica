@@ -288,7 +288,7 @@ func applyDefaultCreateOptions(o *createOpts) {
 // 格式：{clustername}-{opsType}-ops-{timestamp}
 func makeOpsRequestName(clusterName string, opsType opv1alpha1.OpsType) string {
 	timestamp := time.Now().UnixNano()
-	return fmt.Sprintf("%s-%s-ops-%d", clusterName, strings.ToLower(string(opsType)), timestamp)
+	return fmt.Sprintf("%s-%s-ops-%x", clusterName, strings.ToLower(string(opsType)), timestamp)
 }
 
 // getOpsRequestsByIndex 使用索引查询 OpsRequest，失败时回退到标签查询
