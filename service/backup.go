@@ -73,6 +73,10 @@ func (s *BackupService) ReScheduleBackup(ctx context.Context, schedule model.Bac
 		return fmt.Errorf("get cluster by service_id: %w", err)
 	}
 
+	// Determine backup method based on cluster type (required by KubeBlocks)
+	adapter := _clusterRegistry[clusterType(cluster)]
+	backupMethod := adapter.Backup.GetBackupMethod()
+
 	needUpdate := false
 	var patchData map[string]any
 	if schedule.BackupRepo == "" {
@@ -95,6 +99,7 @@ func (s *BackupService) ReScheduleBackup(ctx context.Context, schedule model.Bac
 					"backup": map[string]any{
 						"repoName":        schedule.BackupRepo,
 						"enabled":         &enabled,
+						"method":          backupMethod,
 						"cronExpression":  schedule.Schedule.Cron(),
 						"retentionPeriod": schedule.RetentionPeriod,
 					},
@@ -125,6 +130,10 @@ func (s *BackupService) ReScheduleBackup(ctx context.Context, schedule model.Bac
 				backupPatch["enabled"] = &enabled
 				hasChanges = true
 			}
+
+			// Always ensure method is present to satisfy validation
+			backupPatch["method"] = backupMethod
+			hasChanges = true
 
 			if hasChanges {
 				patchData = map[string]any{
