@@ -14,7 +14,7 @@ type PostgreSQLCoordinator struct {
 }
 
 func (c *PostgreSQLCoordinator) TargetPort() int {
-	return 5432
+	return 6432
 }
 
 func (c *PostgreSQLCoordinator) GetSecretName(clusterName string) string {

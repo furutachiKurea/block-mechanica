@@ -7,8 +7,14 @@ import (
 	"net/http"
 	"reflect"
 
+	"github.com/furutachiKurea/block-mechanica/internal/model"
 	"github.com/labstack/echo/v4"
 )
+
+type ConnectInfoRes struct {
+	ConnectInfos []model.ConnectInfo `json:"connect_infos"`
+	Port         int                 `json:"port"`
+}
 
 // Response 定义用于正确返回的 JSON
 type Response struct {

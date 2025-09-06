@@ -167,7 +167,12 @@ func (h *Handler) GetConnectInfo(c echo.Context) error {
 		return res.InternalError(fmt.Errorf("get connect info: %w", err))
 	}
 
-	return res.ReturnSuccess(c, connectInfos)
+	response := &res.ConnectInfoRes{
+		ConnectInfos: connectInfos,
+		Port:         h.svc.GetClusterPort(ctx, req.RBDService.ServiceID),
+	}
+
+	return res.ReturnSuccess(c, response)
 }
 
 // CheckKubeBlocksComponent 通过给定的 service-id 判断该 Rainbond 组件是否为 KubeBlocks Component 并返回相关信息
