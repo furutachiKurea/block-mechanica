@@ -10,7 +10,6 @@ import (
 	opsv1alpha1 "github.com/apecloud/kubeblocks/apis/operations/v1alpha1"
 	workloadsv1 "github.com/apecloud/kubeblocks/apis/workloads/v1"
 	"github.com/furutachiKurea/block-mechanica/api"
-	"github.com/furutachiKurea/block-mechanica/controller"
 	"github.com/furutachiKurea/block-mechanica/internal/config"
 	"github.com/furutachiKurea/block-mechanica/internal/index"
 	"github.com/furutachiKurea/block-mechanica/service"
@@ -61,11 +60,6 @@ func NewManager() (ctrl.Manager, error) {
 func Setup(ctx context.Context, mgr ctrl.Manager, svcs service.Services) error {
 	if err := index.Register(ctx, mgr); err != nil {
 		return fmt.Errorf("register indexes: %w", err)
-	}
-
-	// 注册本项目的 controller，将业务服务通过依赖注入传入
-	if err := controller.Register(mgr, svcs); err != nil {
-		return fmt.Errorf("register controllers: %w", err)
 	}
 
 	// 注册 API server runnable（由 Setup 统一收口）

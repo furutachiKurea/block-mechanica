@@ -129,11 +129,6 @@ type Cluster interface {
 	// 使用 opsrequest 将 Cluster 的资源规格进行伸缩，使其变为 req 的期望状态
 	ExpansionCluster(ctx context.Context, expansion model.ExpansionInput) error
 
-	// StartCluster 启动 Cluster
-	StartCluster(ctx context.Context, cluster *kbappsv1.Cluster) error
-
-	// StopCluster 停止 Cluster
-	StopCluster(ctx context.Context, cluster *kbappsv1.Cluster) error
 }
 
 // Rainbond 提供 Rainbond 相关资源与 BlockMechanica 的关联判定
@@ -153,14 +148,8 @@ type Rainbond interface {
 	// 封装 getComponentByServiceID 方法
 	GetKubeBlocksComponentByServiceID(ctx context.Context, serviceID string) (*appsv1.Deployment, error)
 
-	// GetTargetPort 返回指定数据库类型在 KubeBlocks Service 中的目标端口
-	GetTargetPort(dbType string) int
-
 	// GetClusterPort 返回指定数据库在 KubeBlocks service 中的目标端口
 	GetClusterPort(ctx context.Context, serviceID string) int
-
-	// IsLegalType 判断数据库类型是否受支持（方法版）
-	IsLegalType(dbType string) bool
 }
 
 // DefaultServices 为聚合接口的默认实现，委托到具体子服务
@@ -232,12 +221,6 @@ func (s *DefaultServices) GetClusterDetail(ctx context.Context, rbd model.RBDSer
 func (s *DefaultServices) ExpansionCluster(ctx context.Context, expansion model.ExpansionInput) error {
 	return s.Cluster.ExpansionCluster(ctx, expansion)
 }
-func (s *DefaultServices) StartCluster(ctx context.Context, cluster *kbappsv1.Cluster) error {
-	return s.Cluster.StartCluster(ctx, cluster)
-}
-func (s *DefaultServices) StopCluster(ctx context.Context, cluster *kbappsv1.Cluster) error {
-	return s.Cluster.StopCluster(ctx, cluster)
-}
 func (s *DefaultServices) DeleteCluster(ctx context.Context, serviceIDs []string) error {
 	return s.Cluster.DeleteCluster(ctx, serviceIDs)
 }
@@ -251,16 +234,8 @@ func (s *DefaultServices) CheckKubeBlocksComponent(ctx context.Context, rbd mode
 	return s.Rainbond.CheckKubeBlocksComponent(ctx, rbd)
 }
 
-func (s *DefaultServices) GetTargetPort(dbType string) int {
-	return s.Rainbond.GetTargetPort(dbType)
-}
-
 func (s *DefaultServices) GetClusterPort(ctx context.Context, serviceID string) int {
 	return s.Rainbond.GetClusterPort(ctx, serviceID)
-}
-
-func (s *DefaultServices) IsLegalType(dbType string) bool {
-	return s.Rainbond.IsLegalType(dbType)
 }
 
 func (s *DefaultServices) GetClusterByServiceID(ctx context.Context, serviceID string) (*kbappsv1.Cluster, error) {

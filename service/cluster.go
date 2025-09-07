@@ -422,14 +422,6 @@ func (s *ClusterService) ExpansionCluster(ctx context.Context, expansion model.E
 	return nil
 }
 
-func (s *ClusterService) StartCluster(ctx context.Context, cluster *kbappsv1.Cluster) error {
-	return createLifecycleOpsRequest(ctx, s.client, cluster, opsv1alpha1.StartType)
-}
-
-func (s *ClusterService) StopCluster(ctx context.Context, cluster *kbappsv1.Cluster) error {
-	return createLifecycleOpsRequest(ctx, s.client, cluster, opsv1alpha1.StopType)
-}
-
 // DeleteCluster 删除 KubeBlocks 数据库集群
 //
 // 批量删除指定 serviceIDs 对应的 Cluster，忽略找不到的 service_id

@@ -53,15 +53,6 @@ func (s *RainbondService) GetKubeBlocksComponentByServiceID(ctx context.Context,
 	return getComponentByServiceID(ctx, s.client, serviceID)
 }
 
-// GetTargetPort 返回指定数据库类型在 KubeBlocks Service 中的目标端口
-func (s *RainbondService) GetTargetPort(dbType string) int {
-	adapter, ok := _clusterRegistry[dbType]
-	if !ok {
-		return -1
-	}
-	return adapter.Coordinator.TargetPort()
-}
-
 // GetClusterPort 返回指定数据库在 KubeBlocks service 中的目标端口
 func (s *RainbondService) GetClusterPort(ctx context.Context, serviceID string) int {
 	cluster, err := getClusterByServiceID(ctx, s.client, serviceID)
@@ -73,12 +64,6 @@ func (s *RainbondService) GetClusterPort(ctx context.Context, serviceID string) 
 		return -1
 	}
 	return adapter.Coordinator.TargetPort()
-}
-
-// IsLegalType 判断数据库类型是否受支持（方法版）
-func (s *RainbondService) IsLegalType(dbType string) bool {
-	_, ok := _clusterRegistry[dbType]
-	return ok
 }
 
 // getClusterByServiceID 通过 service_id 获取对应的 KubeBlocks Cluster
