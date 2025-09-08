@@ -13,6 +13,7 @@ import (
 	"context"
 
 	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
+	opsv1alpha1 "github.com/apecloud/kubeblocks/apis/operations/v1alpha1"
 	"github.com/furutachiKurea/block-mechanica/internal/index"
 	"github.com/furutachiKurea/block-mechanica/internal/log"
 	"github.com/furutachiKurea/block-mechanica/internal/model"
@@ -129,6 +130,19 @@ type Cluster interface {
 	// 使用 opsrequest 将 Cluster 的资源规格进行伸缩，使其变为 req 的期望状态
 	ExpansionCluster(ctx context.Context, expansion model.ExpansionInput) error
 
+	// ManageClustersLifecycle 通过创建 OpsRequest 批量管理多个 Cluster 的生命周期
+	//
+	// 支持 operation: Start, Stop, Restart
+	ManageClustersLifecycle(ctx context.Context, operation opsv1alpha1.OpsType, serviceIDs []string) *model.BatchOperationResult
+
+	// GetPodDetail 获取指定 Cluster 的 Pod detail
+	// 获取指定 service_id 的 Cluster 管理的指定 Pod 的详细信息
+	GetPodDetail(ctx context.Context, serviceID string, podName string) (*model.PodDetail, error)
+
+	// GetClusterEvents 获取指定 KubeBlocks Cluster 的 events
+	//
+	// 从 Cluster 拥有的 OpsRequest 中获取，按创建时间降序排序
+	GetClusterEvents(ctx context.Context, serviceID string, page, pageSize int) ([]model.EventItem, error)
 }
 
 // Rainbond 提供 Rainbond 相关资源与 BlockMechanica 的关联判定
@@ -226,6 +240,15 @@ func (s *DefaultServices) DeleteCluster(ctx context.Context, serviceIDs []string
 }
 func (s *DefaultServices) CancelClusterCreate(ctx context.Context, rbd model.RBDService) error {
 	return s.Cluster.CancelClusterCreate(ctx, rbd)
+}
+func (s *DefaultServices) ManageClustersLifecycle(ctx context.Context, operation opsv1alpha1.OpsType, serviceIDs []string) *model.BatchOperationResult {
+	return s.Cluster.ManageClustersLifecycle(ctx, operation, serviceIDs)
+}
+func (s *DefaultServices) GetPodDetail(ctx context.Context, serviceID string, podName string) (*model.PodDetail, error) {
+	return s.Cluster.GetPodDetail(ctx, serviceID, podName)
+}
+func (s *DefaultServices) GetClusterEvents(ctx context.Context, serviceID string, page, pageSize int) ([]model.EventItem, error) {
+	return s.Cluster.GetClusterEvents(ctx, serviceID, page, pageSize)
 }
 
 // Rainbond

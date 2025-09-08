@@ -44,7 +44,6 @@ type preflight interface {
 }
 
 // uniqueOps 检查是否存在处在非终态的同类型同目标的 OpsRequest，
-// 确保不针对一次状态维护操作创建多个 OpsRequest，用于 controller
 type uniqueOps struct{}
 
 func (uniqueOps) decide(ctx context.Context, c client.Client, ops *opv1alpha1.OpsRequest) (preflightResult, error) {
@@ -83,6 +82,13 @@ func createLifecycleOpsRequest(ctx context.Context,
 	opsType opv1alpha1.OpsType,
 ) error {
 	opsSpecific := opv1alpha1.SpecificOpsRequest{}
+	if opsType == opv1alpha1.RestartType {
+		opsSpecific.RestartList = []opv1alpha1.ComponentOps{
+			{
+				ComponentName: clusterType(cluster),
+			},
+		}
+	}
 
 	if err := createOpsRequest(ctx, c, cluster, opsType, opsSpecific, withPreflight(uniqueOps{})); err != nil {
 		return err

@@ -343,3 +343,52 @@ func (h *Handler) DeleteBackups(c echo.Context) error {
 
 	return res.ReturnSuccess(c, deleted)
 }
+
+func (h *Handler) ManageCluster(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	var req req.ManageClusterLifecycleRequest
+	if err := c.Bind(&req); err != nil {
+		return res.BadRequest(fmt.Errorf("bind request: %w", err))
+	}
+
+	result := h.svc.ManageClustersLifecycle(ctx, req.ManageClusterType(), req.ServiceIDs)
+	if len(result.Succeeded) == 0 {
+		return res.InternalError(res.NewBatchOperationError("manage clusters", result.Failed))
+	}
+
+	return res.ReturnSuccess(c, result)
+}
+
+func (h *Handler) GetPodDetail(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	var req req.GetPodDetailRequest
+	log.Debug("GetPodDetail", log.Any("req", req))
+	if err := c.Bind(&req); err != nil {
+		return res.BadRequest(fmt.Errorf("bind request: %w", err))
+	}
+
+	podDetail, err := h.svc.GetPodDetail(ctx, req.ServiceID, req.PodName)
+	if err != nil {
+		return res.InternalError(fmt.Errorf("get pod detail: %w", err))
+	}
+
+	return res.ReturnSuccess(c, podDetail)
+}
+
+func (h *Handler) GetClusterEvents(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	var req req.GetClusterEventsRequest
+	if err := c.Bind(&req); err != nil {
+		return res.BadRequest(fmt.Errorf("bind request: %w", err))
+	}
+
+	events, err := h.svc.GetClusterEvents(ctx, req.ServiceID, req.Page, req.PageSize)
+	if err != nil {
+		return res.InternalError(fmt.Errorf("get cluster events: %w", err))
+	}
+
+	return res.ReturnSuccess(c, events)
+}

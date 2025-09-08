@@ -176,7 +176,7 @@ type BasicInfo struct {
 	ClusterInfo
 	RBDService
 	Status   ClusterStatus `json:"status"`
-	Replicas []PodStatus   `json:"replicas"`
+	Replicas []Status      `json:"replicas"`
 }
 
 // ClusterResourceStatus Cluster 的实际资源状态信息
@@ -207,8 +207,8 @@ type ClusterStatus struct {
 	StartTime string `json:"start_time,omitempty"`
 }
 
-// PodStatus 副本状态信息
-type PodStatus struct {
+// Status 副本状态信息
+type Status struct {
 	Name   string          `json:"name"`
 	Status corev1.PodPhase `json:"status"`
 	Ready  bool            `json:"ready"`
@@ -265,4 +265,116 @@ type VolumeExpansionOpsParams struct {
 	ComponentName           string
 	VolumeClaimTemplateName string
 	Storage                 resource.Quantity
+}
+
+type BatchOperationResult struct {
+	Succeeded []string         `json:"succeeded"`
+	Failed    map[string]error `json:"failed"`
+}
+
+func NewBatchOperationResult() *BatchOperationResult {
+	return &BatchOperationResult{
+		Succeeded: make([]string, 0),
+		Failed:    make(map[string]error),
+	}
+}
+
+func (result *BatchOperationResult) AddSucceeded(serviceID string) {
+	result.Succeeded = append(result.Succeeded, serviceID)
+}
+
+func (result *BatchOperationResult) AddFailed(serviceID string, err error) {
+	result.Failed[serviceID] = err
+}
+
+/*
+	"bean": {
+	       "name": "pod-xxx-abcdef",
+	       "node_ip": "10.0.0.1",
+	       "start_time": "2023-07-20T08:21:00Z",
+	       "ip": "172.20.0.2",
+	       "version": "v1.2.3",
+	       "namespace": "default",
+	       "status": {
+	         "type_str": "running",
+	         "reason": "ContainersNotReady",
+	         "message": "Waiting for container to start",
+	         "advice": "OutOfMemory"
+	       },
+	       "containers": [
+	         {
+		   	   "component_def": "postgresql-12-1.0.0", // 来自 cluster 而不是从 pod 获取
+	           "limit_memory": "512Mi",
+	           "limit_cpu": "0.5",
+	           "started": "2023-07-20T08:22:00Z",
+	           "state": "Running",
+	           "reason": ""
+	         }
+	       ],
+	       "events": [
+	         {
+	           "type": "Normal",
+	           "reason": "Pulled",
+	           "age": "5m",
+	           "message": "Successfully pulled image"
+	         }
+	       ]
+	     }
+	   }
+*/
+type PodDetail struct {
+	Name       string      `json:"name"`
+	NodeIP     string      `json:"node_ip"`
+	StartTime  string      `json:"start_time"`
+	IP         string      `json:"ip"`
+	Version    string      `json:"version"` //  Cluster.spec.componentSpecs.componentDef:componentDef: postgresql-12-1.0.0
+	Namespace  string      `json:"namespace"`
+	Status     PodStatus   `json:"status"`
+	Containers []Container `json:"containers"`
+	Events     []Event     `json:"events"`
+}
+
+type PodStatus struct {
+	TypeStr string `json:"type_str"`
+	Reason  string `json:"reason"`
+	Message string `json:"message"`
+	Advice  string `json:"advice"`
+}
+
+type Container struct {
+	ComponentDef string `json:"component_def"`
+	LimitMemory  string `json:"limit_memory"`
+	LimitCPU     string `json:"limit_cpu"`
+	Started      string `json:"started"`
+	State        string `json:"state"`
+	Reason       string `json:"reason"`
+}
+
+type Event struct {
+	Type    string `json:"type"`
+	Reason  string `json:"reason"`
+	Age     string `json:"age"`
+	Message string `json:"message"`
+}
+
+/*
+"event_id": "kb-2e9f3c1d-20240901T102355Z-0001",
+"opt_type": "create-cluster",
+"status": "success",
+"final_status": "complete",
+"message": "Cluster created successfully",
+"reason": "",
+"create_time": "2024-09-01T10:23:55Z",
+"end_time": "2024-09-01T10:24:21Z"
+*/
+type EventItem struct {
+	OpsName     string `json:"event_id"`
+	OpsType     string `json:"opt_type"` // TODO 需要考虑是直接使用 OpsRequest name 还是转换成 Rainbond 的那一套
+	UserName    string `json:"user_name,omitempty"`
+	Status      string `json:"status"`
+	FinalStatus string `json:"final_status"`
+	Message     string `json:"message"`
+	Reason      string `json:"reason"`
+	CreateTime  string `json:"create_time"`
+	EndTime     string `json:"end_time"`
 }

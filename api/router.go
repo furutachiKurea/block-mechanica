@@ -29,6 +29,9 @@ func setupRouter(v1 *echo.Group, h *handler.Handler) {
 		cluster.GET("/:service-id/backups", h.GetBackups)
 		cluster.POST("/:service-id/backups", h.CreateBackup)
 		cluster.DELETE("/:service-id/backups", h.DeleteBackups)
+		cluster.POST("/actions", h.ManageCluster)
+		cluster.GET("/:service-id/pods/:pod-name/details", h.GetPodDetail)
+		cluster.GET("/:service-id/events", h.GetClusterEvents)
 	}
 }
 

@@ -71,10 +71,15 @@ func (s *ResourceService) GetAddons(ctx context.Context) ([]*Addon, error) {
 	}), nil
 }
 
-// filterSupportedAddons mono.Filter 的过滤逻辑
+// filterSupportedAddons mono.Filter 的过滤函数
 //
 // 仅返回在 _clusterRegistry 中声明过的数据库类型，确保返回值与系统实际可创建的类型一致。
+// 判定是否受 Block Mechanica 支持时, 不同 toplogy 的 addon 视为同一类型
 func filterSupportedAddons(addon *Addon) bool {
-	_, ok := _clusterRegistry[addon.Type]
+	t := addon.Type
+	/*     if i := strings.LastIndex(t, "-"); i > 0 {
+	       t = t[:i]
+	   } */
+	_, ok := _clusterRegistry[t]
 	return ok
 }

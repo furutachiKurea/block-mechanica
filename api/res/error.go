@@ -1,10 +1,32 @@
 package res
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 )
+
+type BatchOperationError struct {
+	msg    string
+	errors map[string]error
+}
+
+func NewBatchOperationError(msg string, errors map[string]error) *BatchOperationError {
+	return &BatchOperationError{
+		msg:    msg,
+		errors: errors,
+	}
+}
+
+func (e *BatchOperationError) Error() string {
+	var errMsgs []string
+	for serviceID, err := range e.errors {
+		errMsgs = append(errMsgs, fmt.Sprintf("%s: %v", serviceID, err))
+	}
+	return fmt.Sprintf("%s: %s", e.msg, strings.Join(errMsgs, "; "))
+}
 
 // newError 创建一个 echo.HTTPError
 func newError(code int, message string) error {

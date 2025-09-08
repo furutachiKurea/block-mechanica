@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -19,6 +20,8 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -274,7 +277,7 @@ func (s *ClusterService) buildBasicInfo(
 	cluster *kbappsv1.Cluster,
 	component kbappsv1.ClusterComponentSpec,
 	rbdService model.RBDService,
-	podList []model.PodStatus,
+	podList []model.Status,
 ) model.BasicInfo {
 	startTime := getStartTimeISO(cluster.Status.Conditions)
 	status := strings.ToLower(string(cluster.Status.Phase))
@@ -425,6 +428,7 @@ func (s *ClusterService) ExpansionCluster(ctx context.Context, expansion model.E
 // DeleteCluster 删除 KubeBlocks 数据库集群
 //
 // 批量删除指定 serviceIDs 对应的 Cluster，忽略找不到的 service_id
+// TODO 命名，目前单数但是删除复数个, maybe DeleteCllusters
 func (s *ClusterService) DeleteCluster(ctx context.Context, serviceIDs []string) error {
 	for _, serviceID := range serviceIDs {
 		err := s.deleteCluster(ctx, serviceID, false)
@@ -492,6 +496,233 @@ func (s *ClusterService) deleteCluster(ctx context.Context, serviceID string, is
 		log.String("namespace", cluster.Namespace),
 		log.Bool("wipe_out", isCancle))
 
+	return nil
+}
+
+// ManageClustersLifecycle 通过创建 OpsRequest 批量管理多个 Cluster 的生命周期
+func (s *ClusterService) ManageClustersLifecycle(ctx context.Context, operation opsv1alpha1.OpsType, serviceIDs []string) *model.BatchOperationResult {
+	manageResult := model.NewBatchOperationResult()
+	for _, serviceID := range serviceIDs {
+		cluster, err := getClusterByServiceID(ctx, s.client, serviceID)
+		if errors.Is(err, ErrTargetNotFound) {
+			continue
+		}
+		if err != nil {
+			manageResult.AddFailed(serviceID, err)
+			continue
+		}
+
+		if err = createLifecycleOpsRequest(ctx, s.client, cluster, operation); err == nil {
+			manageResult.AddSucceeded(serviceID)
+		} else {
+			manageResult.AddFailed(serviceID, err)
+		}
+	}
+	return manageResult
+}
+
+// GetPodDetail 获取指定 Cluster 的 Pod detail
+// 获取指定 service_id 的 Cluster 管理的指定 Pod 的详细信息
+func (s *ClusterService) GetPodDetail(ctx context.Context, serviceID string, podName string) (*model.PodDetail, error) {
+	cluster, err := getClusterByServiceID(ctx, s.client, serviceID)
+	if err != nil && errors.Is(err, ErrTargetNotFound) {
+		return nil, fmt.Errorf("get cluster by service_id %s: %w", serviceID, err)
+	}
+
+	pods, err := s.getClusterPods(ctx, cluster)
+	if err != nil {
+		return nil, fmt.Errorf("get cluster pods: %w", err)
+	}
+
+	targetPod := findPodByName(pods, podName)
+	if targetPod == nil {
+		return nil, ErrTargetNotFound
+	}
+
+	pod := &corev1.Pod{}
+	if err := s.client.Get(ctx, client.ObjectKey{Name: podName, Namespace: cluster.Namespace}, pod); err != nil {
+		return nil, fmt.Errorf("get pod %s: %w", podName, err)
+	}
+
+	version := ""
+	componentDef := ""
+	if len(cluster.Spec.ComponentSpecs) > 0 {
+		// Version 字段按注释约定来自 componentDef，若为空则回退 serviceVersion
+		if v := cluster.Spec.ComponentSpecs[0].ComponentDef; v != "" {
+			version = v
+		} else {
+			version = cluster.Spec.ComponentSpecs[0].ServiceVersion
+		}
+		componentDef = cluster.Spec.ComponentSpecs[0].ComponentDef
+	}
+
+	status := buildPodDetailStatus(*pod)
+	containers := buildContainerDetails(pod.Spec.Containers, pod.Status.ContainerStatuses, componentDef)
+	events, err := getPodEvents(ctx, s.client, podName, pod.Namespace)
+	if err != nil {
+		log.Warn("Failed to get pod events",
+			log.String("pod", podName),
+			log.String("namespace", pod.Namespace),
+			log.Err(err))
+		events = []model.Event{}
+	}
+
+	startTime := ""
+	if pod.Status.StartTime != nil {
+		startTime = formatToISO8601Time(pod.Status.StartTime.Time)
+	}
+
+	podDetail := &model.PodDetail{
+		Name:       pod.Name,
+		NodeIP:     pod.Status.HostIP,
+		StartTime:  startTime,
+		IP:         pod.Status.PodIP,
+		Version:    version,
+		Namespace:  pod.Namespace,
+		Status:     status,
+		Containers: containers,
+		Events:     events,
+	}
+
+	log.Debug("get pod detail",
+		log.String("service_id", serviceID),
+		log.String("pod", podName),
+		log.Any("detail", podDetail))
+
+	return podDetail, nil
+}
+
+// GetClusterEvents 获取指定 KubeBlocks Cluster 的运维事件列表
+//
+// 事件数据来源于与 Cluster 关联的 OpsRequest 资源，按创建时间降序排序
+func (s *ClusterService) GetClusterEvents(ctx context.Context, serviceID string, page, pageSize int) ([]model.EventItem, error) {
+	// 参数验证
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 6
+	}
+	if pageSize > 100 {
+		pageSize = 100 // 限制最大页面大小
+	}
+
+	cluster, err := getClusterByServiceID(ctx, s.client, serviceID)
+	if err != nil {
+		return nil, fmt.Errorf("get cluster by service_id %s: %w", serviceID, err)
+	}
+
+	var opsList opsv1alpha1.OpsRequestList
+	selector := labels.SelectorFromSet(labels.Set{
+		constant.AppInstanceLabelKey: cluster.Name,
+	})
+	if err := s.client.List(ctx, &opsList, &client.ListOptions{
+		Namespace:     cluster.Namespace,
+		LabelSelector: selector,
+	}); err != nil {
+		return nil, fmt.Errorf("list opsrequests for cluster %s: %w", cluster.Name, err)
+	}
+
+	// 转换所有 OpsRequest 为 EventItem
+	events := make([]model.EventItem, 0, len(opsList.Items))
+	for _, ops := range opsList.Items {
+		event := s.convertOpsRequestToEventItem(&ops)
+		events = append(events, event)
+	}
+
+	// 按创建时间降序
+	sort.Slice(events, func(i, j int) bool {
+		return events[i].CreateTime > events[j].CreateTime
+	})
+
+	startIndex := (page - 1) * pageSize
+	endIndex := startIndex + pageSize
+
+	if startIndex >= len(events) {
+		// 页码超出范围，返回空结果
+		return []model.EventItem{}, nil
+	}
+
+	if endIndex > len(events) {
+		endIndex = len(events)
+	}
+
+	pageEvents := events[startIndex:endIndex]
+
+	return pageEvents, nil
+}
+
+// convertOpsRequestToEventItem 将 OpsRequest 转换为 EventItem
+func (s *ClusterService) convertOpsRequestToEventItem(ops *opsv1alpha1.OpsRequest) model.EventItem {
+	var message, reason, status, finalStatus, endTime string
+
+	if !ops.Status.CompletionTimestamp.IsZero() {
+		endTime = formatToISO8601Time(ops.Status.CompletionTimestamp.Time)
+	}
+
+	switch ops.Status.Phase {
+	case opsv1alpha1.OpsSucceedPhase:
+		status = "success"
+		finalStatus = "complete"
+		message = "Operation completed successfully"
+	case opsv1alpha1.OpsFailedPhase:
+		status = "failure"
+		finalStatus = "complete"
+		// 优先从 condition 中获取详细失败信息
+		if cond := findFailedCondition(ops.Status.Conditions); cond != nil {
+			message = cond.Message
+			reason = cond.Reason
+		} else {
+			message = "Operation failed with unknown reason"
+		}
+	case opsv1alpha1.OpsCancelledPhase:
+		status = "failure"
+		finalStatus = "complete"
+		message = "Operation was cancelled"
+	default:
+		status = ""
+		finalStatus = ""
+		message = "Operation is in progress"
+	}
+
+	return model.EventItem{
+		OpsName:     ops.Name,
+		OpsType:     toRainbondOptType(ops.Spec.Type),
+		UserName:    "BlockMechanica",
+		Status:      status,
+		FinalStatus: finalStatus,
+		Message:     message,
+		Reason:      reason,
+		CreateTime:  formatToISO8601Time(ops.CreationTimestamp.Time),
+		EndTime:     endTime,
+	}
+}
+
+func toRainbondOptType(opsType opsv1alpha1.OpsType) string {
+	switch opsType {
+	case opsv1alpha1.VerticalScalingType:
+		// Vertical Scaling
+		return "vertical-service"
+	case opsv1alpha1.HorizontalScalingType:
+		// Horizontal Scaling
+		return "horizontal-service"
+	case opsv1alpha1.VolumeExpansionType:
+		// Storage Expansion
+		return "update-service-volume"
+	case opsv1alpha1.BackupType:
+		return "backup-database"
+	default:
+		return ""
+	}
+}
+
+// findFailedCondition 查找失败状态的 Condition
+func findFailedCondition(conditions []metav1.Condition) *metav1.Condition {
+	for _, cond := range conditions {
+		if cond.Status == metav1.ConditionFalse {
+			return &cond
+		}
+	}
 	return nil
 }
 
@@ -634,7 +865,7 @@ func (s *ClusterService) handleVolumeExpansion(ctx context.Context, scalingCtx m
 }
 
 // getClusterPods 获取 Cluster 相关的 Pod 状态信息
-func (s *ClusterService) getClusterPods(ctx context.Context, cluster *kbappsv1.Cluster) ([]model.PodStatus, error) {
+func (s *ClusterService) getClusterPods(ctx context.Context, cluster *kbappsv1.Cluster) ([]model.Status, error) {
 	componentName, err := extractComponentName(cluster)
 	if err != nil {
 		return nil, err
@@ -648,7 +879,7 @@ func (s *ClusterService) getClusterPods(ctx context.Context, cluster *kbappsv1.C
 			log.Info("InstanceSet not found, returning empty pod list",
 				log.String("cluster", cluster.Name),
 				log.String("component", componentName))
-			return []model.PodStatus{}, nil
+			return []model.Status{}, nil
 		}
 		return nil, fmt.Errorf("get instanceset: %w", err)
 	}
@@ -663,7 +894,7 @@ func (s *ClusterService) getClusterPods(ctx context.Context, cluster *kbappsv1.C
 		return nil, fmt.Errorf("get pods by names: %w", err)
 	}
 
-	result := make([]model.PodStatus, 0, len(pods))
+	result := make([]model.Status, 0, len(pods))
 	for _, pod := range pods {
 		result = append(result, buildPodStatus(pod))
 	}
@@ -740,7 +971,7 @@ func getPodsByNames(ctx context.Context, c client.Client, podNames []string, nam
 }
 
 // buildPodStatus 构建 Pod 状态信息
-func buildPodStatus(pod corev1.Pod) model.PodStatus {
+func buildPodStatus(pod corev1.Pod) model.Status {
 	ready := false
 
 	for _, condition := range pod.Status.Conditions {
@@ -750,10 +981,59 @@ func buildPodStatus(pod corev1.Pod) model.PodStatus {
 		}
 	}
 
-	return model.PodStatus{
+	return model.Status{
 		Name:   pod.Name,
 		Status: pod.Status.Phase,
 		Ready:  ready,
+	}
+}
+
+// buildPodDetailStatus 构建符合注释约定的 PodStatus（包含 type_str/reason/message/advice）
+func buildPodDetailStatus(pod corev1.Pod) model.PodStatus {
+	typeStr := strings.ToLower(string(pod.Status.Phase))
+	reason := ""
+	message := ""
+	advice := ""
+
+	// 优先取 Waiting 的容器状态
+	for _, cs := range pod.Status.ContainerStatuses {
+		if cs.State.Waiting != nil {
+			reason = cs.State.Waiting.Reason
+			message = cs.State.Waiting.Message
+			advice = deriveAdvice(reason, message)
+			break
+		}
+	}
+	// 其次取 Terminated 的容器状态
+	if reason == "" {
+		for _, cs := range pod.Status.ContainerStatuses {
+			if cs.State.Terminated != nil {
+				reason = cs.State.Terminated.Reason
+				message = cs.State.Terminated.Message
+				advice = deriveAdvice(reason, message)
+				break
+			}
+		}
+	}
+
+	return model.PodStatus{
+		TypeStr: typeStr,
+		Reason:  reason,
+		Message: message,
+		Advice:  advice,
+	}
+}
+
+// deriveAdvice 将常见的 reason 映射为建议性结论
+func deriveAdvice(reason, message string) string {
+	switch reason {
+	case "OOMKilled":
+		return "OutOfMemory"
+	case "ImagePullBackOff", "ErrImagePull":
+		return "ImagePullError"
+	default:
+		_ = message // 预留后续扩展
+		return ""
 	}
 }
 
@@ -799,5 +1079,143 @@ func transStatus(status string) string {
 		return "异常"
 	default:
 		return string(status)
+	}
+}
+
+// findPodByName 在 Pod 状态列表中查找指定名称的 Pod
+func findPodByName(pods []model.Status, podName string) *model.Status {
+	for _, pod := range pods {
+		if pod.Name == podName {
+			return &pod
+		}
+	}
+	return nil
+}
+
+// buildContainerDetails 构建容器详情列表，只返回设置了资源限制的工作容器
+func buildContainerDetails(containers []corev1.Container, containerStatuses []corev1.ContainerStatus, componentDef string) []model.Container {
+	var details []model.Container
+
+	statusMap := make(map[string]corev1.ContainerStatus)
+	for _, status := range containerStatuses {
+		statusMap[status.Name] = status
+	}
+
+	for _, container := range containers {
+		if !hasResourceLimits(container.Resources.Limits) {
+			continue
+		}
+
+		status, exists := statusMap[container.Name]
+		if !exists {
+			continue
+		}
+
+		startedTime := ""
+		state := "Unknown"
+		reason := ""
+
+		if status.State.Running != nil {
+			startedTime = formatToISO8601Time(status.State.Running.StartedAt.Time)
+			state = "Running"
+		} else if status.State.Waiting != nil {
+			state = "Waiting"
+			reason = status.State.Waiting.Reason
+		} else if status.State.Terminated != nil {
+			state = "Terminated"
+			reason = status.State.Terminated.Reason
+		}
+
+		limitCPU := ""
+		if cpu := container.Resources.Limits.Cpu(); cpu != nil {
+			limitCPU = cpu.String()
+		}
+
+		limitMemory := ""
+		if memory := container.Resources.Limits.Memory(); memory != nil {
+			limitMemory = memory.String()
+		}
+
+		containerDetail := model.Container{
+			ComponentDef: componentDef,
+			LimitMemory:  limitMemory,
+			LimitCPU:     limitCPU,
+			Started:      startedTime,
+			State:        state,
+			Reason:       reason,
+		}
+
+		details = append(details, containerDetail)
+	}
+
+	return details
+}
+
+// hasResourceLimits 检查是否设置了 CPU 或 Memory 资源限制
+func hasResourceLimits(limits corev1.ResourceList) bool {
+	if limits == nil {
+		return false
+	}
+
+	cpu, hasCPU := limits[corev1.ResourceCPU]
+	memory, hasMemory := limits[corev1.ResourceMemory]
+
+	return (hasCPU && !cpu.IsZero()) || (hasMemory && !memory.IsZero())
+}
+
+// getPodEvents 查询并格式化指定 Pod 的相关事件
+func getPodEvents(ctx context.Context, c client.Client, podName, namespace string) ([]model.Event, error) {
+	var eventList corev1.EventList
+
+	fieldSelector := fields.OneTermEqualSelector("involvedObject.name", podName)
+	listOptions := &client.ListOptions{
+		FieldSelector: fieldSelector,
+		Namespace:     namespace,
+	}
+
+	if err := c.List(ctx, &eventList, listOptions); err != nil {
+		return nil, fmt.Errorf("list events for pod %s: %w", podName, err)
+	}
+
+	sort.Slice(eventList.Items, func(i, j int) bool {
+		return eventList.Items[i].FirstTimestamp.After(eventList.Items[j].FirstTimestamp.Time)
+	})
+
+	const maxEvents = 10
+	endIndex := len(eventList.Items)
+	if endIndex > maxEvents {
+		endIndex = maxEvents
+	}
+
+	events := make([]model.Event, 0, endIndex)
+	for i := 0; i < endIndex; i++ {
+		event := eventList.Items[i]
+		events = append(events, model.Event{
+			Type:    event.Type,
+			Reason:  event.Reason,
+			Age:     formatAge(event.FirstTimestamp),
+			Message: event.Message,
+		})
+	}
+
+	return events, nil
+}
+
+// formatAge 将时间差格式化为人类可读的格式 (如 "5m", "2h", "3d")
+func formatAge(eventTime metav1.Time) string {
+	if eventTime.IsZero() {
+		return ""
+	}
+
+	duration := time.Since(eventTime.Time)
+
+	if duration < time.Minute {
+		return fmt.Sprintf("%.0fs", duration.Seconds())
+	} else if duration < time.Hour {
+		return fmt.Sprintf("%.0fm", duration.Minutes())
+	} else if duration < 24*time.Hour {
+		return fmt.Sprintf("%.0fh", duration.Hours())
+	} else {
+		return fmt.Sprintf("%.0fd", duration.Hours()/24)
 	}
 }
