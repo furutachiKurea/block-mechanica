@@ -626,6 +626,7 @@ func (s *ClusterService) GetClusterEvents(ctx context.Context, serviceID string,
 	events := make([]model.EventItem, 0, len(opsList.Items))
 	for _, ops := range opsList.Items {
 		event := s.convertOpsRequestToEventItem(&ops)
+		log.Debug("convert opsrequest to eventItem", log.Any("eventItem", event))
 		events = append(events, event)
 	}
 
@@ -656,7 +657,7 @@ func (s *ClusterService) convertOpsRequestToEventItem(ops *opsv1alpha1.OpsReques
 	var message, reason, status, finalStatus, endTime string
 
 	if !ops.Status.CompletionTimestamp.IsZero() {
-		endTime = formatToISO8601Time(ops.Status.CompletionTimestamp.Time)
+		endTime = formatTimeWithOffset(ops.Status.CompletionTimestamp.Time)
 	}
 
 	switch ops.Status.Phase {
@@ -692,7 +693,7 @@ func (s *ClusterService) convertOpsRequestToEventItem(ops *opsv1alpha1.OpsReques
 		FinalStatus: finalStatus,
 		Message:     message,
 		Reason:      reason,
-		CreateTime:  formatToISO8601Time(ops.CreationTimestamp.Time),
+		CreateTime:  formatTimeWithOffset(ops.CreationTimestamp.Time),
 		EndTime:     endTime,
 	}
 }
@@ -1056,6 +1057,13 @@ func getStartTimeISO(conditions []metav1.Condition) string {
 // formatToISO8601Time 将标准 time.Time 转为 ISO 8601（RFC3339，UTC）字符串
 func formatToISO8601Time(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
+}
+
+// formatTimeWithOffset 将时间格式化为带数字时区偏移的 RFC3339 格式
+// 形如: 2025-09-09T16:51:59+08:00
+func formatTimeWithOffset(t time.Time) string {
+	localTime := t.In(time.Local)
+	return localTime.Format(time.RFC3339)
 }
 
 func transStatus(status string) string {
