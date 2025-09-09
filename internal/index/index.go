@@ -37,6 +37,10 @@ const (
 	// NamespaceClusterComponentField namespace/cluster/component，
 	// 用于索引 InstanceSet
 	NamespaceClusterComponentField = "index.namespace.cluster.component"
+
+	// NamespacePodNameField namespace/podName，
+	// 用于索引 Pod 相关的 Event
+	NamespacePodNameField = "index.namespace.podName"
 )
 
 // Register 在缓存注册字段索引。
@@ -108,6 +112,17 @@ func Register(ctx context.Context, mgr ctrl.Manager) error {
 			if componentName, ok := instanceSet.Labels["apps.kubeblocks.io/component-name"]; ok {
 				return []string{fmt.Sprintf("%s/%s/%s", instanceSet.Namespace, clusterName, componentName)}
 			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	// 为 Event 按 namespace/podName 建立索引
+	if err := indexer.IndexField(ctx, &corev1.Event{}, NamespacePodNameField, func(obj client.Object) []string {
+		event := obj.(*corev1.Event)
+		if event.InvolvedObject.Kind == "Pod" && event.InvolvedObject.Name != "" {
+			return []string{fmt.Sprintf("%s/%s", event.Namespace, event.InvolvedObject.Name)}
 		}
 		return nil
 	}); err != nil {

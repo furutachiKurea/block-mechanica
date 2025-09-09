@@ -20,7 +20,6 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -558,7 +557,7 @@ func (s *ClusterService) GetPodDetail(ctx context.Context, serviceID string, pod
 
 	status := buildPodDetailStatus(*pod)
 	containers := buildContainerDetails(pod.Spec.Containers, pod.Status.ContainerStatuses, componentDef)
-	events, err := getPodEvents(ctx, s.client, podName, pod.Namespace)
+	events, err := getPodEventsByIndex(ctx, s.client, podName, pod.Namespace)
 	if err != nil {
 		log.Warn("Failed to get pod events",
 			log.String("pod", podName),
@@ -1163,34 +1162,41 @@ func hasResourceLimits(limits corev1.ResourceList) bool {
 	return (hasCPU && !cpu.IsZero()) || (hasMemory && !memory.IsZero())
 }
 
-// getPodEvents 查询并格式化指定 Pod 的相关事件
-func getPodEvents(ctx context.Context, c client.Client, podName, namespace string) ([]model.Event, error) {
+// getPodEventsByIndex 使用索引查询 Pod 相关的 Event
+func getPodEventsByIndex(ctx context.Context, c client.Client, podName, namespace string) ([]model.Event, error) {
 	var eventList corev1.EventList
 
-	fieldSelector := fields.OneTermEqualSelector("involvedObject.name", podName)
-	listOptions := &client.ListOptions{
-		FieldSelector: fieldSelector,
-		Namespace:     namespace,
+	indexKey := fmt.Sprintf("%s/%s", namespace, podName)
+	if err := c.List(ctx, &eventList, client.MatchingFields{index.NamespacePodNameField: indexKey}); err != nil {
+		log.Warn("Index query for pod events failed",
+			log.String("indexKey", indexKey),
+			log.String("pod", podName),
+			log.String("namespace", namespace),
+			log.Err(err))
+		return []model.Event{}, nil
 	}
 
-	if err := c.List(ctx, &eventList, listOptions); err != nil {
-		return nil, fmt.Errorf("list events for pod %s: %w", podName, err)
-	}
+	return processEvents(eventList.Items), nil
+}
 
-	sort.Slice(eventList.Items, func(i, j int) bool {
-		return eventList.Items[i].FirstTimestamp.After(eventList.Items[j].FirstTimestamp.Time)
+// processEvents 处理 Event 列表
+func processEvents(events []corev1.Event) []model.Event {
+	// 按时间排序
+	sort.Slice(events, func(i, j int) bool {
+		return events[i].FirstTimestamp.After(events[j].FirstTimestamp.Time)
 	})
 
+	// 限制返回数量
 	const maxEvents = 10
-	endIndex := len(eventList.Items)
+	endIndex := len(events)
 	if endIndex > maxEvents {
 		endIndex = maxEvents
 	}
 
-	events := make([]model.Event, 0, endIndex)
+	result := make([]model.Event, 0, endIndex)
 	for i := 0; i < endIndex; i++ {
-		event := eventList.Items[i]
-		events = append(events, model.Event{
+		event := events[i]
+		result = append(result, model.Event{
 			Type:    event.Type,
 			Reason:  event.Reason,
 			Age:     formatAge(event.FirstTimestamp),
@@ -1198,7 +1204,7 @@ func getPodEvents(ctx context.Context, c client.Client, podName, namespace strin
 		})
 	}
 
-	return events, nil
+	return result
 }
 
 // formatAge 将时间差格式化为人类可读的格式 (如 "5m", "2h", "3d")
