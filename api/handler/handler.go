@@ -330,11 +330,7 @@ func (h *Handler) DeleteBackups(c echo.Context) error {
 
 	log.Info("Wanted to delete backups", log.Any("backups", req.Backups))
 
-	rbdService := model.RBDService{
-		ServiceID: req.ServiceID,
-	}
-
-	deleted, err := h.svc.DeleteBackups(ctx, rbdService, req.Backups)
+	deleted, err := h.svc.DeleteBackups(ctx, req.RBDService, req.Backups)
 	if err != nil {
 		return res.InternalError(fmt.Errorf("delete backups: %w", err))
 	}
