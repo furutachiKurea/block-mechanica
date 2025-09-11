@@ -5,8 +5,6 @@
 // - Resource: 提供 k8s 资源的相关操作
 //
 // - Backup: 提供 KubeBlocks 的 Backup 相关操作
-//
-// - Rainbond: 提供 Rainbond 相关资源与 BlockMechanica 的关联判定等操作
 package service
 
 import (
@@ -58,16 +56,6 @@ type Services interface {
 	Resource
 	Backup
 	Cluster
-	Rainbond
-}
-
-// Resource 提供集群资源相关操作
-type Resource interface {
-	// GetAddons 获取所有可用的 Addon（数据库类型与版本）
-	GetAddons(ctx context.Context) ([]*Addon, error)
-
-	// GetStorageClasses 返回集群中所有的 StorageClass 的名称
-	GetStorageClasses(ctx context.Context) (StorageClasses, error)
 }
 
 // Backup 提供 KubeBlocks 的 Backup 相关操作
@@ -145,12 +133,18 @@ type Cluster interface {
 	GetClusterEvents(ctx context.Context, serviceID string, page, pageSize int) ([]model.EventItem, error)
 }
 
-// Rainbond 提供 Rainbond 相关资源与 BlockMechanica 的关联判定
-type Rainbond interface {
+// Resource 提供集群资源发现和 Rainbond 集成操作
+type Resource interface {
+	// GetAddons 获取所有可用的 Addon（数据库类型与版本）
+	GetAddons(ctx context.Context) ([]*model.Addon, error)
+
+	// GetStorageClasses 返回集群中所有的 StorageClass 的名称
+	GetStorageClasses(ctx context.Context) (model.StorageClasses, error)
+
 	// CheckKubeBlocksComponent 依据 RBDService 判定该 Rainbond 组件是否为 KubeBlocks Component，如果是，则还返回 KubeBlocks Component 对应的 Cluster 的数据库类型
 	//
 	// 如果给定的 req.RBDService.ID 能够匹配到一个 KubeBlocks Cluster，则说明该 Rainbond 组件为 KubeBlocks Component
-	CheckKubeBlocksComponent(ctx context.Context, rbd model.RBDService) (*KubeBlocksComponentInfo, error)
+	CheckKubeBlocksComponent(ctx context.Context, rbd model.RBDService) (*model.KubeBlocksComponentInfo, error)
 
 	// GetClusterByServiceID 通过 service_id 获取对应的 KubeBlocks Cluster
 	//
@@ -171,16 +165,14 @@ type DefaultServices struct {
 	Backup   Backup
 	Cluster  Cluster
 	Resource Resource
-	Rainbond Rainbond
 }
 
 // NewServices 构建聚合服务实例
-func NewServices(backup *BackupService, cluster *ClusterService, resource *ResourceService, rainbond *RainbondService) Services {
+func NewServices(backup *BackupService, cluster *ClusterService, resource *ResourceService) Services {
 	return &DefaultServices{
 		Backup:   backup,
 		Cluster:  cluster,
 		Resource: resource,
-		Rainbond: rainbond,
 	}
 }
 
@@ -190,17 +182,7 @@ func New(c client.Client) Services {
 		NewBackupService(c),
 		NewClusterService(c),
 		NewResourceService(c),
-		NewRainbondService(c),
 	)
-}
-
-// Resource
-
-func (s *DefaultServices) GetAddons(ctx context.Context) ([]*Addon, error) {
-	return s.Resource.GetAddons(ctx)
-}
-func (s *DefaultServices) GetStorageClasses(ctx context.Context) (StorageClasses, error) {
-	return s.Resource.GetStorageClasses(ctx)
 }
 
 // Backup
@@ -251,22 +233,29 @@ func (s *DefaultServices) GetClusterEvents(ctx context.Context, serviceID string
 	return s.Cluster.GetClusterEvents(ctx, serviceID, page, pageSize)
 }
 
-// Rainbond
+// Resource
 
-func (s *DefaultServices) CheckKubeBlocksComponent(ctx context.Context, rbd model.RBDService) (*KubeBlocksComponentInfo, error) {
-	return s.Rainbond.CheckKubeBlocksComponent(ctx, rbd)
+func (s *DefaultServices) GetAddons(ctx context.Context) ([]*model.Addon, error) {
+	return s.Resource.GetAddons(ctx)
+}
+func (s *DefaultServices) GetStorageClasses(ctx context.Context) (model.StorageClasses, error) {
+	return s.Resource.GetStorageClasses(ctx)
+}
+
+func (s *DefaultServices) CheckKubeBlocksComponent(ctx context.Context, rbd model.RBDService) (*model.KubeBlocksComponentInfo, error) {
+	return s.Resource.CheckKubeBlocksComponent(ctx, rbd)
 }
 
 func (s *DefaultServices) GetClusterPort(ctx context.Context, serviceID string) int {
-	return s.Rainbond.GetClusterPort(ctx, serviceID)
+	return s.Resource.GetClusterPort(ctx, serviceID)
 }
 
 func (s *DefaultServices) GetClusterByServiceID(ctx context.Context, serviceID string) (*kbappsv1.Cluster, error) {
-	return s.Rainbond.GetClusterByServiceID(ctx, serviceID)
+	return s.Resource.GetClusterByServiceID(ctx, serviceID)
 }
 
 func (s *DefaultServices) GetKubeBlocksComponentByServiceID(ctx context.Context, serviceID string) (*appsv1.Deployment, error) {
-	return s.Rainbond.GetKubeBlocksComponentByServiceID(ctx, serviceID)
+	return s.Resource.GetKubeBlocksComponentByServiceID(ctx, serviceID)
 }
 
 // init 函数进行注册表验证
