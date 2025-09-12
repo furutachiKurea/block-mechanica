@@ -75,7 +75,7 @@ func (s *BackupService) ReScheduleBackup(ctx context.Context, schedule model.Bac
 
 	// Determine backup method based on cluster type (required by KubeBlocks)
 	adapter := _clusterRegistry[clusterType(cluster)]
-	backupMethod := adapter.Backup.GetBackupMethod()
+	backupMethod := adapter.Coordinator.GetBackupMethod()
 
 	needUpdate := false
 	var patchData map[string]any
@@ -182,7 +182,7 @@ func (s *BackupService) BackupCluster(ctx context.Context, req model.BackupInput
 		return fmt.Errorf("backup is not enabled for cluster %s", cluster.Name)
 	}
 
-	backupMethod := adapter.Backup.GetBackupMethod()
+	backupMethod := adapter.Coordinator.GetBackupMethod()
 
 	if err := createBackupOpsRequest(ctx, s.client, cluster, backupMethod); err != nil {
 		return fmt.Errorf("create backup opsrequest: %w", err)

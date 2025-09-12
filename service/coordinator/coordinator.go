@@ -24,3 +24,9 @@ func (c *Base) GetSecretName(clusterName string) string {
 	// 每个具体的 Coordinator 都应该重写此方法
 	return fmt.Sprintf("%s-account-root", clusterName)
 }
+
+func (c *Base) GetBackupMethod() string {
+	// Base 实现返回默认备份方法，但实际不应被直接使用
+	// 每个具体的 Coordinator 都应该重写此方法
+	return "default"
+}

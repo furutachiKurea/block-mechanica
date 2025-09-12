@@ -16,7 +16,6 @@ import (
 	"github.com/furutachiKurea/block-mechanica/internal/log"
 	"github.com/furutachiKurea/block-mechanica/internal/model"
 	"github.com/furutachiKurea/block-mechanica/service/adapter"
-	"github.com/furutachiKurea/block-mechanica/service/backuper"
 	"github.com/furutachiKurea/block-mechanica/service/builder"
 	"github.com/furutachiKurea/block-mechanica/service/coordinator"
 	appsv1 "k8s.io/api/apps/v1"
@@ -39,13 +38,11 @@ var (
 	_postgresql = adapter.ClusterAdapter{
 		Builder:     &builder.PostgreBuilder{},
 		Coordinator: &coordinator.PostgreSQLCoordinator{},
-		Backup:      &backuper.PostgreSQLBackuper{},
 	}
 
 	_mysql = adapter.ClusterAdapter{
 		Builder:     &builder.MySQLBuilder{},
 		Coordinator: &coordinator.MySQLCoordinator{},
-		Backup:      &backuper.MySQLBackuper{},
 	}
 )
 

@@ -32,10 +32,7 @@ type Coordinator interface {
 
 	// GetSecretName 返回该数据库类型的 Secret 命名格式
 	GetSecretName(clusterName string) string
-}
 
-// Backuper 提供数据库类型特化的备份配置
-type Backuper interface {
 	// GetBackupMethod 返回该数据库类型支持的备份方法
 	GetBackupMethod() string
 }
@@ -47,12 +44,9 @@ type Backuper interface {
 // - Builder
 //
 // - Coordinator
-//
-// - Backup
 type ClusterAdapter struct {
 	Builder     ClusterBuilder
 	Coordinator Coordinator
-	Backup      Backuper
 }
 
 // Validate 验证 ClusterAdapter 的完整性，
@@ -64,10 +58,6 @@ func (ca *ClusterAdapter) Validate() error {
 
 	if ca.Coordinator == nil {
 		return fmt.Errorf("Coordinator: %w", ErrAdapterNotImplemented)
-	}
-
-	if ca.Backup == nil {
-		return fmt.Errorf("BackupConfig: %w", ErrAdapterNotImplemented)
 	}
 
 	return nil

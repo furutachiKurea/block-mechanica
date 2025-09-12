@@ -21,3 +21,7 @@ func (c *PostgreSQLCoordinator) GetSecretName(clusterName string) string {
 	// PostgreSQL 使用 postgresql 作为中间部分和 postgres 作为账户类型
 	return fmt.Sprintf("%s-postgresql-account-postgres", clusterName)
 }
+
+func (c *PostgreSQLCoordinator) GetBackupMethod() string {
+	return "pg-basebackup"
+}

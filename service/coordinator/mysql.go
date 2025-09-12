@@ -21,3 +21,7 @@ func (c *MySQLCoordinator) GetSecretName(clusterName string) string {
 	// MySQL 使用 mysql 作为中间部分和 root 作为账户类型
 	return fmt.Sprintf("%s-mysql-account-root", clusterName)
 }
+
+func (c *MySQLCoordinator) GetBackupMethod() string {
+	return "xtrabackup"
+}
