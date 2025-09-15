@@ -8,6 +8,7 @@ import (
 	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
 	datav1alpha1 "github.com/apecloud/kubeblocks/apis/dataprotection/v1alpha1"
 	opsv1alpha1 "github.com/apecloud/kubeblocks/apis/operations/v1alpha1"
+	parametersv1alpha1 "github.com/apecloud/kubeblocks/apis/parameters/v1alpha1"
 	workloadsv1 "github.com/apecloud/kubeblocks/apis/workloads/v1"
 	"github.com/furutachiKurea/block-mechanica/api"
 	"github.com/furutachiKurea/block-mechanica/internal/config"
@@ -30,6 +31,7 @@ func init() {
 	utilruntime.Must(kbappsv1.AddToScheme(_scheme))
 	utilruntime.Must(datav1alpha1.AddToScheme(_scheme))
 	utilruntime.Must(opsv1alpha1.AddToScheme(_scheme))
+	utilruntime.Must(parametersv1alpha1.AddToScheme(_scheme))
 	utilruntime.Must(appsv1.AddToScheme(_scheme))
 	utilruntime.Must(workloadsv1.AddToScheme(_scheme))
 }

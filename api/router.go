@@ -32,6 +32,8 @@ func setupRouter(v1 *echo.Group, h *handler.Handler) {
 		cluster.POST("/actions", h.ManageCluster)
 		cluster.GET("/:service-id/pods/:pod-name/details", h.GetPodDetail)
 		cluster.GET("/:service-id/events", h.GetClusterEvents)
+		cluster.GET("/:service-id/parameters", h.GetClusterParameters)
+		cluster.POST("/:service-id/parameters", h.ChangeClusterParameter)
 	}
 }
 

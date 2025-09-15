@@ -626,6 +626,10 @@ func (s *ClusterService) GetClusterEvents(ctx context.Context, serviceID string,
 	events := make([]model.EventItem, 0, len(opsList.Items))
 	for _, ops := range opsList.Items {
 		event := s.convertOpsRequestToEventItem(&ops)
+		// 只保留 block mechanica 支持的 OpsType
+		if event.OpsType == "" {
+			continue
+		}
 		log.Debug("convert opsrequest to eventItem", log.Any("eventItem", event))
 		events = append(events, event)
 	}
@@ -698,6 +702,9 @@ func (s *ClusterService) convertOpsRequestToEventItem(ops *opsv1alpha1.OpsReques
 	}
 }
 
+// toRainbondOptType 将 OpsType 转换为 Rainbond 支持的 OpsType 的 string 值
+//
+// 忽略会与 Rainbond event 重复的 OpsType，只保留 KubeBlocks 特有的事件类型
 func toRainbondOptType(opsType opsv1alpha1.OpsType) string {
 	switch opsType {
 	case opsv1alpha1.VerticalScalingType:
@@ -711,6 +718,8 @@ func toRainbondOptType(opsType opsv1alpha1.OpsType) string {
 		return "update-service-volume"
 	case opsv1alpha1.BackupType:
 		return "backup-database"
+	case opsv1alpha1.ReconfiguringType:
+		return "reconfiguring-cluster"
 	default:
 		return ""
 	}

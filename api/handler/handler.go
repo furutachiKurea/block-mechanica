@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/furutachiKurea/block-mechanica/api/req"
@@ -387,4 +388,56 @@ func (h *Handler) GetClusterEvents(c echo.Context) error {
 	}
 
 	return res.ReturnSuccess(c, events)
+}
+
+// GetClusterParameters 返回 service-id 对应的 KubeBlocks Cluster 的参数设置,
+// 返回的数据结构还包括参数的约束。
+// ErrTargetNotFound 错误表示该数据库不支持参数设置，不应作为业务错误处理，只返回空列表。
+//
+// GET /v1/clusters/:service-id/parameters
+func (h *Handler) GetClusterParameters(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	var req model.ClusterParametersQuery
+	if err := c.Bind(&req); err != nil {
+		return res.BadRequest(fmt.Errorf("bind request: %w", err))
+	}
+
+	result, err := h.svc.GetClusterParameter(ctx, req)
+	if err != nil && errors.Is(err, service.ErrTargetNotFound) {
+		log.Info("cluster does not support parameters", log.String("serviceID", req.ServiceID))
+		return res.ReturnList(c, 0, req.Page, []model.Parameter{})
+	} else if err != nil {
+		return res.InternalError(fmt.Errorf("get cluster parameters: %w", err))
+	}
+
+	return res.ReturnList(c, result.Total, req.Page, result.Items)
+}
+
+// ChangeClusterParameter 变更 KubeBlocks 数据库集群的参数配置
+// 无论是否有参数变更，都应返回 200
+//
+// POST /v1/clusters/:service-id/parameters
+func (h *Handler) ChangeClusterParameter(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	var req model.ClusterParametersChange
+	if err := c.Bind(&req); err != nil {
+		return res.BadRequest(fmt.Errorf("bind request: %w", err))
+	}
+
+	log.Debug("ChangeClusterParameter", log.Any("req", req))
+
+	result, err := h.svc.ChangeClusterParameter(ctx, req)
+	if err != nil {
+		return res.InternalError(fmt.Errorf("change cluster parameters: %w", err))
+	}
+
+	log.Debug("parameter change response",
+		log.String("serviceID", req.ServiceID),
+		log.Any("appliedCount", result.Applied),
+		log.Any("invalidCount", result.Invalids),
+	)
+
+	return res.ReturnSuccess(c, result)
 }

@@ -202,6 +202,35 @@ func createVolumeExpansionOpsRequest(ctx context.Context,
 	return createOpsRequest(ctx, c, params.Cluster, opv1alpha1.VolumeExpansionType, specificOps)
 }
 
+// createParameterChangeOpsRequest 创建参数变更 OpsRequest
+func createParameterChangeOpsRequest(ctx context.Context,
+	c client.Client,
+	cluster *kbappsv1.Cluster,
+	parameters []model.ParameterEntry,
+) error {
+	specificOps := opv1alpha1.SpecificOpsRequest{
+		Reconfigures: []opv1alpha1.Reconfigure{
+			{
+				ComponentOps: opv1alpha1.ComponentOps{ComponentName: clusterType(cluster)},
+			},
+		},
+	}
+
+	var parameterPairs []opv1alpha1.ParameterPair
+	for _, parameter := range parameters {
+		if strValue, ok := parameter.Value.(*string); ok {
+			parameterPairs = append(parameterPairs, opv1alpha1.ParameterPair{
+				Key:   parameter.Name,
+				Value: strValue,
+			})
+		}
+	}
+
+	specificOps.Reconfigures[0].Parameters = parameterPairs
+
+	return createOpsRequest(ctx, c, cluster, opv1alpha1.ReconfiguringType, specificOps)
+}
+
 // createOpsRequest 创建 OpsRequest
 //
 // OpsRequest 的名称格式为 {clustername}-{opsType}-ops-{timestamp}，

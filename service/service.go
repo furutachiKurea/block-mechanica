@@ -155,6 +155,12 @@ type Resource interface {
 
 	// GetClusterPort 返回指定数据库在 KubeBlocks service 中的目标端口
 	GetClusterPort(ctx context.Context, serviceID string) int
+
+	// GetClusterParameter 获取指定 KubeBlocks Cluster 的参数
+	GetClusterParameter(ctx context.Context, query model.ClusterParametersQuery) (*model.PaginatedResult[model.Parameter], error)
+
+	// ChangeClusterParameter 变更指定 KubeBlocks Cluster 的参数
+	ChangeClusterParameter(ctx context.Context, req model.ClusterParametersChange) (*model.ParameterChangeResult, error)
 }
 
 // DefaultServices 为聚合接口的默认实现，委托到具体子服务
@@ -253,6 +259,14 @@ func (s *DefaultServices) GetClusterByServiceID(ctx context.Context, serviceID s
 
 func (s *DefaultServices) GetKubeBlocksComponentByServiceID(ctx context.Context, serviceID string) (*appsv1.Deployment, error) {
 	return s.Resource.GetKubeBlocksComponentByServiceID(ctx, serviceID)
+}
+
+func (s *DefaultServices) GetClusterParameter(ctx context.Context, query model.ClusterParametersQuery) (*model.PaginatedResult[model.Parameter], error) {
+	return s.Resource.GetClusterParameter(ctx, query)
+}
+
+func (s *DefaultServices) ChangeClusterParameter(ctx context.Context, req model.ClusterParametersChange) (*model.ParameterChangeResult, error) {
+	return s.Resource.ChangeClusterParameter(ctx, req)
 }
 
 // init 函数进行注册表验证
