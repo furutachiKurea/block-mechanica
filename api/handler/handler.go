@@ -441,3 +441,23 @@ func (h *Handler) ChangeClusterParameter(c echo.Context) error {
 
 	return res.ReturnSuccess(c, result)
 }
+
+func (h *Handler) RestoreClusterFromBackup(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	var req req.RestoreFromBackupRequest
+	if err := c.Bind(&req); err != nil {
+		return res.BadRequest(fmt.Errorf("bind request: %w", err))
+	}
+
+	restoredCluster, err := h.svc.RestoreFromBackup(ctx, req.ServiceID, req.BackupName)
+	if err != nil {
+		return res.InternalError(fmt.Errorf("restore cluster from backup: %w", err))
+	}
+
+	response := &res.RestoreFromBackupRes{
+		NewClusterName: restoredCluster,
+	}
+
+	return res.ReturnSuccess(c, response)
+}

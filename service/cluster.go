@@ -1,5 +1,7 @@
 package service
 
+// TODO:拆分文件或者重构分包
+
 import (
 	"context"
 	"errors"
@@ -68,7 +70,7 @@ func (s *ClusterService) CreateCluster(ctx context.Context, c model.ClusterInput
 	}
 
 	c.Name = cluster.Name
-	if err := s.associateToKubeBlocksComponent(ctx, cluster, c); err != nil {
+	if err := s.associateToKubeBlocksComponent(ctx, cluster, c.RBDService.ServiceID); err != nil {
 		return nil, fmt.Errorf("associate to rainbond component: %w", err)
 	}
 
@@ -76,9 +78,9 @@ func (s *ClusterService) CreateCluster(ctx context.Context, c model.ClusterInput
 }
 
 // AssociateToKubeBlocksComponent 将 KubeBlocks 组件和 Cluster 通过 service_id 关联
-func (s *ClusterService) associateToKubeBlocksComponent(ctx context.Context, cluster *kbappsv1.Cluster, input model.ClusterInput) error {
+func (s *ClusterService) associateToKubeBlocksComponent(ctx context.Context, cluster *kbappsv1.Cluster, serviceID string) error {
 	log.Debug("start associate cluster to rainbond component",
-		log.String("service_id", input.RBDService.ServiceID),
+		log.String("service_id", serviceID),
 		log.String("cluster", cluster.Name),
 	)
 
@@ -97,9 +99,9 @@ func (s *ClusterService) associateToKubeBlocksComponent(ctx context.Context, clu
 			return false, nil
 		}
 
-		if latest.Labels != nil && latest.Labels[labelServiceID] == input.RBDService.ServiceID {
+		if latest.Labels != nil && latest.Labels[labelServiceID] == serviceID {
 			log.Debug("Cluster already has correct service_id label",
-				log.String("service_id", input.RBDService.ServiceID),
+				log.String("service_id", serviceID),
 			)
 			return true, nil
 		}
@@ -110,7 +112,7 @@ func (s *ClusterService) associateToKubeBlocksComponent(ctx context.Context, clu
 					"%s": "%s"
 				}
 			}
-		}`, labelServiceID, input.RBDService.ServiceID)
+		}`, labelServiceID, serviceID)
 
 		if err := s.client.Patch(ctx, &kbappsv1.Cluster{
 			ObjectMeta: metav1.ObjectMeta{
@@ -126,7 +128,7 @@ func (s *ClusterService) associateToKubeBlocksComponent(ctx context.Context, clu
 		}
 
 		log.Debug("Successfully added service_id label to cluster",
-			log.String("service_id", input.RBDService.ServiceID),
+			log.String("service_id", serviceID),
 			log.String("cluster", cluster.Name),
 		)
 		return true, nil
@@ -137,7 +139,7 @@ func (s *ClusterService) associateToKubeBlocksComponent(ctx context.Context, clu
 	}
 
 	log.Info("Associated KubeBlocks Cluster to Rainbond component",
-		log.String("service_id", input.RBDService.ServiceID),
+		log.String("service_id", serviceID),
 		log.String("cluster", cluster.Name),
 	)
 
@@ -656,6 +658,321 @@ func (s *ClusterService) GetClusterEvents(ctx context.Context, serviceID string,
 	return pageEvents, nil
 }
 
+// RestoreFromBackup 从用户通过 backupName 指定的备份中 restore cluster，返回 restored cluster 的名称
+//
+// 该方法将为恢复的 cluster 添加 rbd service-id, 并给旧 cluster 添加 SupersededByRestoreAnnotation 标记。
+//
+// OpsRequest 创建完成后：可能出现两种情况：
+//
+// - running，此时可以移除旧 cluster 与 rainbond 的关联，
+// 并为新 Cluster 创建与 kubeblocks component 的关联
+//
+// - 非 running，则不应该移除旧 cluster 与 rainbond 的关联，
+// 同时也不应该为新 Cluster 创建与 kubeblocks component 的关联
+func (s *ClusterService) RestoreFromBackup(ctx context.Context, serviceID, backupName string) (string, error) {
+	cluster, err := getClusterByServiceID(ctx, s.client, serviceID)
+	if err != nil {
+		return "", fmt.Errorf("get cluster by service_id: %w", err)
+	}
+
+	log.Info("starting cluster restore from backup",
+		log.String("service_id", serviceID),
+		log.String("backup_name", backupName),
+		log.String("old_cluster", cluster.Name),
+	)
+
+	// 标记旧 cluster 已被备份恢复的新 cluster 替代
+	if err := s.markSupersededByRestore(ctx, cluster); err != nil {
+		return "", fmt.Errorf("mark original cluster superseded by restore: %w", err)
+	}
+
+	// 设置事务性回滚逻辑，确保在任何错误情况下都能正确清理状态
+	var rollbackRequired bool
+	defer func() {
+		if rollbackRequired {
+			if rollbackErr := s.rollbackSupersededAnnotation(ctx, cluster); rollbackErr != nil {
+				log.Error("failed to rollback superseded annotation during error recovery",
+					log.String("cluster", cluster.Name),
+					log.Err(rollbackErr),
+				)
+			}
+		}
+	}()
+
+	// 创建 Restore OpsRequest
+	ops, err := createRestoreOpsRequest(ctx, s.client, cluster, backupName)
+	if err != nil {
+		rollbackRequired = true
+		return "", fmt.Errorf("create restore opsrequest: %w", err)
+	}
+
+	log.Info("restore ops request created, waiting for restored cluster",
+		log.String("ops_request", ops.Name),
+		log.String("new_cluster_name", ops.Spec.ClusterName),
+	)
+
+	// 等待新 cluster 创建，同时监控 OpsRequest 状态
+	newCluster, err := s.waitForRestoredCluster(ctx, ops, cluster.Name)
+	if err != nil {
+		rollbackRequired = true
+		return "", fmt.Errorf("wait for restored cluster: %w", err)
+	}
+
+	// 为新 cluster 添加 service_id 标签，建立与 Rainbond 组件的关联
+	if err := s.associateToKubeBlocksComponent(ctx, newCluster, serviceID); err != nil {
+		rollbackRequired = true
+		return "", fmt.Errorf("associate cluster to rainbond component: %w", err)
+	}
+
+	log.Info("cluster restore from backup completed successfully",
+		log.String("service_id", serviceID),
+		log.String("old_cluster", cluster.Name),
+		log.String("new_cluster", newCluster.Name),
+		log.String("backup_name", backupName),
+	)
+
+	return newCluster.Name, nil
+}
+
+// markSupersededByRestore 为旧 Cluster 添加 SupersededByRestoreAnnotation 标记，表示已被备份恢复创建的新 Cluster 替代
+func (s *ClusterService) markSupersededByRestore(ctx context.Context, cluster *kbappsv1.Cluster) error {
+	log.Debug("mark cluster superseded by restore",
+		log.String("cluster", cluster.Name),
+		log.String("namespace", cluster.Namespace),
+	)
+
+	// 如果已经存在标记则直接返回
+	if cluster.Annotations != nil {
+		if _, exists := cluster.Annotations[SupersededByRestoreAnnotation]; exists {
+			log.Debug("cluster already marked as superseded by restore",
+				log.String("cluster", cluster.Name),
+			)
+			return nil
+		}
+	}
+
+	patchData := fmt.Sprintf(`{
+        "metadata": {
+            "annotations": {
+                "%s": "true"
+            }
+        }
+    }`, SupersededByRestoreAnnotation)
+
+	if err := s.client.Patch(ctx, &kbappsv1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      cluster.Name,
+			Namespace: cluster.Namespace,
+		},
+	}, client.RawPatch(types.MergePatchType, []byte(patchData))); err != nil {
+		return fmt.Errorf("add superseded-by-restore annotation to cluster %s/%s: %w", cluster.Namespace, cluster.Name, err)
+	}
+
+	log.Info("Marked cluster as superseded by restore",
+		log.String("cluster", cluster.Name),
+		log.String("namespace", cluster.Namespace),
+	)
+
+	return nil
+}
+
+// waitForRestoredCluster 等待由 Restore OpsRequest 创建的新 cluster 出现在集群中
+//
+// 该函数会轮询检查新 cluster 是否存在，超时时间为 20 秒，轮询间隔为 500ms。
+// 同时监控 OpsRequest 状态，如果 OpsRequest 失败则立即退出。
+func (s *ClusterService) waitForRestoredCluster(ctx context.Context, ops *opsv1alpha1.OpsRequest, oldClusterName string) (*kbappsv1.Cluster, error) {
+	newClusterName := ops.Spec.ClusterName
+	namespace := ops.Namespace
+
+	log.Debug("waiting for restored cluster to be created",
+		log.String("new_cluster", newClusterName),
+		log.String("namespace", namespace),
+		log.String("ops_request", ops.Name),
+	)
+
+	// 等待20秒
+	timeoutCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+
+	var newCluster *kbappsv1.Cluster
+	err := wait.PollUntilContextCancel(timeoutCtx, 500*time.Millisecond, true, func(ctx context.Context) (bool, error) {
+		// 检查 OpsRequest 状态，如果失败则立即退出
+		var latestOps opsv1alpha1.OpsRequest
+		if err := s.client.Get(ctx, client.ObjectKey{
+			Name:      ops.Name,
+			Namespace: ops.Namespace,
+		}, &latestOps); err != nil {
+			log.Debug("failed to get ops request status", log.Err(err))
+			return false, nil
+		}
+
+		// 检查 OpsRequest 是否失败
+		if latestOps.Status.Phase == opsv1alpha1.OpsFailedPhase ||
+			latestOps.Status.Phase == opsv1alpha1.OpsCancelledPhase ||
+			latestOps.Status.Phase == opsv1alpha1.OpsAbortedPhase {
+			log.Info("restore ops request failed, stopping wait",
+				log.String("ops_request", ops.Name),
+				log.String("phase", string(latestOps.Status.Phase)),
+			)
+			// 处理失败的 OpsRequest
+			if handleErr := s.handleFailedRestoreOps(ctx, &latestOps, oldClusterName); handleErr != nil {
+				log.Error("failed to handle failed restore ops", log.Err(handleErr))
+			}
+			return false, fmt.Errorf("restore ops request failed with phase: %s", latestOps.Status.Phase)
+		}
+
+		// 检查新 cluster 是否存在
+		var cluster kbappsv1.Cluster
+		if err := s.client.Get(ctx, client.ObjectKey{
+			Name:      newClusterName,
+			Namespace: namespace,
+		}, &cluster); err != nil {
+			log.Debug("restored cluster not found yet, continuing to wait",
+				log.String("cluster", newClusterName),
+				log.String("namespace", namespace),
+			)
+			return false, nil
+		}
+
+		log.Debug("restored cluster found",
+			log.String("cluster", cluster.Name),
+			log.String("namespace", cluster.Namespace),
+		)
+		newCluster = &cluster
+		return true, nil
+	})
+
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			// 超时时清理 OpsRequest
+			log.Warn("timeout detected, cleaning up ops request",
+				log.String("ops_request", ops.Name),
+				log.String("new_cluster", newClusterName),
+				log.String("namespace", namespace),
+			)
+			if cleanupErr := s.cleanupOpsRequest(ctx, ops, "timeout"); cleanupErr != nil {
+				log.Error("failed to cleanup timed out ops request",
+					log.String("ops_request", ops.Name),
+					log.Err(cleanupErr))
+			}
+			return nil, fmt.Errorf("timeout waiting for restored cluster %s/%s to be created", namespace, newClusterName)
+		}
+		return nil, fmt.Errorf("error waiting for restored cluster: %w", err)
+	}
+
+	log.Info("restored cluster successfully created and found",
+		log.String("cluster", newCluster.Name),
+		log.String("namespace", newCluster.Namespace),
+	)
+
+	return newCluster, nil
+}
+
+// handleFailedRestoreOps 处理失败的 Restore OpsRequest
+//
+// 修改失败的 OpsRequest 的 app.kubernetes.io/instance 标签值为旧 cluster 名称
+func (s *ClusterService) handleFailedRestoreOps(ctx context.Context, ops *opsv1alpha1.OpsRequest, oldClusterName string) error {
+	log.Debug("handling failed restore ops request",
+		log.String("ops_request", ops.Name),
+		log.String("old_cluster", oldClusterName),
+	)
+
+	patchData := fmt.Sprintf(`{
+		"metadata": {
+			"labels": {
+				"%s": "%s"
+			}
+		}
+	}`, constant.AppInstanceLabelKey, oldClusterName)
+
+	if err := s.client.Patch(ctx, &opsv1alpha1.OpsRequest{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      ops.Name,
+			Namespace: ops.Namespace,
+		},
+	}, client.RawPatch(types.MergePatchType, []byte(patchData))); err != nil {
+		return fmt.Errorf("patch failed restore ops request %s/%s app instance label: %w", ops.Namespace, ops.Name, err)
+	}
+
+	log.Info("updated failed restore ops request app instance label",
+		log.String("ops_request", ops.Name),
+		log.String("old_cluster", oldClusterName),
+	)
+
+	return nil
+}
+
+// rollbackSupersededAnnotation 回滚旧 cluster 的 SupersededByRestoreAnnotation 标记
+//
+// 该函数移除旧 cluster 的 SupersededByRestoreAnnotation 标记，用于错误恢复
+func (s *ClusterService) rollbackSupersededAnnotation(ctx context.Context, cluster *kbappsv1.Cluster) error {
+	log.Debug("rolling back superseded annotation",
+		log.String("cluster", cluster.Name),
+		log.String("namespace", cluster.Namespace),
+	)
+
+	// 检查是否存在标记
+	if cluster.Annotations == nil {
+		log.Debug("cluster has no annotations, nothing to rollback")
+		return nil
+	}
+
+	if _, exists := cluster.Annotations[SupersededByRestoreAnnotation]; !exists {
+		log.Debug("cluster does not have superseded annotation, nothing to rollback")
+		return nil
+	}
+
+	patchData := fmt.Sprintf(`[{
+		"op": "remove",
+		"path": "/metadata/annotations/%s"
+	}]`, strings.ReplaceAll(SupersededByRestoreAnnotation, "/", "~1"))
+
+	if err := s.client.Patch(ctx, &kbappsv1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      cluster.Name,
+			Namespace: cluster.Namespace,
+		},
+	}, client.RawPatch(types.JSONPatchType, []byte(patchData))); err != nil {
+		return fmt.Errorf("remove superseded-by-restore annotation from cluster %s/%s: %w", cluster.Namespace, cluster.Name, err)
+	}
+
+	log.Info("rolled back superseded annotation from cluster",
+		log.String("cluster", cluster.Name),
+		log.String("namespace", cluster.Namespace),
+	)
+
+	return nil
+}
+
+// cleanupOpsRequest 清理指定的 OpsRequest
+//
+// 用于清理超时的 OpsRequest，防止资源泄漏和状态不一致
+func (s *ClusterService) cleanupOpsRequest(ctx context.Context, ops *opsv1alpha1.OpsRequest, reason string) error {
+	log.Debug("cleaning up ops request",
+		log.String("ops_request", ops.Name),
+		log.String("namespace", ops.Namespace),
+		log.String("reason", reason),
+	)
+
+	// 删除 OpsRequest
+	if err := s.client.Delete(ctx, &opsv1alpha1.OpsRequest{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      ops.Name,
+			Namespace: ops.Namespace,
+		},
+	}); err != nil {
+		return fmt.Errorf("delete ops request %s/%s: %w", ops.Namespace, ops.Name, err)
+	}
+
+	log.Info("successfully cleaned up ops request",
+		log.String("ops_request", ops.Name),
+		log.String("namespace", ops.Namespace),
+		log.String("reason", reason),
+	)
+
+	return nil
+}
+
 // convertOpsRequestToEventItem 将 OpsRequest 转换为 EventItem
 func (s *ClusterService) convertOpsRequestToEventItem(ops *opsv1alpha1.OpsRequest) model.EventItem {
 	var message, reason, status, finalStatus, endTime string
@@ -720,6 +1037,8 @@ func toRainbondOptType(opsType opsv1alpha1.OpsType) string {
 		return "backup-database"
 	case opsv1alpha1.ReconfiguringType:
 		return "reconfiguring-cluster"
+	case opsv1alpha1.RestoreType:
+		return "restore-database"
 	default:
 		return ""
 	}

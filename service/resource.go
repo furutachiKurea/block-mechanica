@@ -1,6 +1,7 @@
 package service
 
 // resource.go 提供集群资源的相关操作
+// TODO 拆分文件或者分包
 
 import (
 	"cmp"
@@ -25,6 +26,13 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+const (
+	// SupersededByRestoreAnnotation 标记已被备份恢复替代的旧 Cluster
+	// 当从备份恢复创建新cluster后，原cluster会被标记此annotation以避免查询冲突
+	// getClusterByServiceID 会自动过滤掉带有此annotation的cluster
+	SupersededByRestoreAnnotation = "block-mechanica.rainbond.io/superseded-by-restore"
 )
 
 // ResourceService 提供集群资源相关操作
@@ -697,18 +705,20 @@ func filterSupportedAddons(addon *model.Addon) bool {
 	return ok
 }
 
-// getClusterByServiceID 通过 service_id 获取对应的 KubeBlocks Cluster
+// getClusterByServiceID 通过 service_id 获取对应的 KubeBlocks Cluster，
+// 排除已经重备份恢复的 Cluster 替代的 Cluster
 // 优先 MatchingFields，失败回退到 MatchingLabels
 func getClusterByServiceID(ctx context.Context, c client.Client, serviceID string) (*kbappsv1.Cluster, error) {
 	var list kbappsv1.ClusterList
 
 	// 使用 index
 	if err := c.List(ctx, &list, client.MatchingFields{index.ServiceIDField: serviceID}); err == nil {
-		switch len(list.Items) {
+		filteredClusters := filterExcludedClusters(list.Items)
+		switch len(filteredClusters) {
 		case 0:
 			return nil, ErrTargetNotFound
 		case 1:
-			return &list.Items[0], nil
+			return &filteredClusters[0], nil
 		default:
 			return nil, ErrMultipleFounded
 		}
@@ -720,14 +730,26 @@ func getClusterByServiceID(ctx context.Context, c client.Client, serviceID strin
 		return nil, fmt.Errorf("list clusters by service_id %s: %w", serviceID, err)
 	}
 
-	switch len(list.Items) {
+	filteredClusters := filterExcludedClusters(list.Items)
+	switch len(filteredClusters) {
 	case 0:
 		return nil, ErrTargetNotFound
 	case 1:
-		return &list.Items[0], nil
+		return &filteredClusters[0], nil
 	default:
 		return nil, ErrMultipleFounded
 	}
+}
+
+// filterExcludedClusters 排除已经重备份恢复的 Cluster 替代的 Cluster
+func filterExcludedClusters(clusters []kbappsv1.Cluster) []kbappsv1.Cluster {
+	return mono.Filter(clusters, func(cluster kbappsv1.Cluster) bool {
+		if cluster.Annotations == nil {
+			return true
+		}
+		_, exists := cluster.Annotations[SupersededByRestoreAnnotation]
+		return !exists
+	})
 }
 
 // getComponentByServiceID 通过 service_id 获取对应的 KubeBlocks Component（Rainbond 侧的 Deployment）

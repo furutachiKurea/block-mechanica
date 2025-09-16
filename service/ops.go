@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"crypto/md5"
 	"fmt"
 	"strings"
 	"time"
@@ -90,7 +91,7 @@ func createLifecycleOpsRequest(ctx context.Context,
 		}
 	}
 
-	if err := createOpsRequest(ctx, c, cluster, opsType, opsSpecific, withPreflight(uniqueOps{})); err != nil {
+	if _, err := createOpsRequest(ctx, c, cluster, opsType, opsSpecific, withPreflight(uniqueOps{})); err != nil {
 		return err
 	}
 
@@ -114,7 +115,8 @@ func createBackupOpsRequest(ctx context.Context,
 		},
 	}
 
-	return createOpsRequest(ctx, c, cluster, opv1alpha1.BackupType, specificOps)
+	_, err := createOpsRequest(ctx, c, cluster, opv1alpha1.BackupType, specificOps)
+	return err
 }
 
 // createHorizontalScalingOpsRequest 为指定的 Cluster 创建水平伸缩 OpsRequest
@@ -151,7 +153,8 @@ func createHorizontalScalingOpsRequest(ctx context.Context,
 		}
 	}
 
-	return createOpsRequest(ctx, c, params.Cluster, opv1alpha1.HorizontalScalingType, specificOps)
+	_, err := createOpsRequest(ctx, c, params.Cluster, opv1alpha1.HorizontalScalingType, specificOps)
+	return err
 }
 
 // createVerticalScalingOpsRequest 为指定的 Cluster 创建垂直伸缩 OpsRequest
@@ -177,7 +180,8 @@ func createVerticalScalingOpsRequest(ctx context.Context,
 		},
 	}
 
-	return createOpsRequest(ctx, c, params.Cluster, opv1alpha1.VerticalScalingType, specificOps)
+	_, err := createOpsRequest(ctx, c, params.Cluster, opv1alpha1.VerticalScalingType, specificOps)
+	return err
 }
 
 // createVolumeExpansionOpsRequest 为指定的 Cluster 创建存储扩容 OpsRequest
@@ -199,7 +203,8 @@ func createVolumeExpansionOpsRequest(ctx context.Context,
 		},
 	}
 
-	return createOpsRequest(ctx, c, params.Cluster, opv1alpha1.VolumeExpansionType, specificOps)
+	_, err := createOpsRequest(ctx, c, params.Cluster, opv1alpha1.VolumeExpansionType, specificOps)
+	return err
 }
 
 // createParameterChangeOpsRequest 创建参数变更 OpsRequest
@@ -228,7 +233,28 @@ func createParameterChangeOpsRequest(ctx context.Context,
 
 	specificOps.Reconfigures[0].Parameters = parameterPairs
 
-	return createOpsRequest(ctx, c, cluster, opv1alpha1.ReconfiguringType, specificOps)
+	_, err := createOpsRequest(ctx, c, cluster, opv1alpha1.ReconfiguringType, specificOps)
+	return err
+}
+
+// createRestoreOpsRequest 使用 backupName 指定一个 backup 创建 Restore OpsRequest，从备份中恢复 cluster
+//
+// 通过 backup 恢复的 Cluster 的名称格式为 {cluster.Name(去除四位后缀)}-restore-{四位随机后缀},
+// 串行恢复卷声明，在集群进行 running 状态后执行 PostReady
+func createRestoreOpsRequest(ctx context.Context,
+	c client.Client,
+	cluster *kbappsv1.Cluster,
+	backupName string,
+) (*opv1alpha1.OpsRequest, error) {
+	specificOps := opv1alpha1.SpecificOpsRequest{
+		Restore: &opv1alpha1.Restore{
+			BackupName:                        backupName,
+			VolumeRestorePolicy:               "Serial",
+			DeferPostReadyUntilClusterRunning: true,
+		},
+	}
+
+	return createOpsRequest(ctx, c, cluster, opv1alpha1.RestoreType, specificOps)
 }
 
 // createOpsRequest 创建 OpsRequest
@@ -242,28 +268,28 @@ func createOpsRequest(
 	opsType opv1alpha1.OpsType,
 	specificOps opv1alpha1.SpecificOpsRequest,
 	opts ...createOption,
-) error {
+) (*opv1alpha1.OpsRequest, error) {
 	options := applyCreateOptions(opts...)
 
 	ops := buildOpsRequest(cluster, opsType, specificOps)
 
 	res, err := options.preflight.decide(ctx, c, ops)
 	if err != nil {
-		return fmt.Errorf("preflight check for ops %s failed: %w", ops.Name, err)
+		return nil, fmt.Errorf("preflight check for ops %s failed: %w", ops.Name, err)
 	}
 
 	if res.Decision == preflightSkip {
-		return ErrCreateOpsSkipped
+		return nil, ErrCreateOpsSkipped
 	}
 
 	if err := c.Create(ctx, ops); err != nil {
 		if apierrors.IsAlreadyExists(err) {
-			return ErrCreateOpsSkipped
+			return nil, ErrCreateOpsSkipped
 		}
-		return fmt.Errorf("create opsrequest %s: %w", ops.Name, err)
+		return nil, fmt.Errorf("create opsrequest %s: %w", ops.Name, err)
 	}
 
-	return nil
+	return ops, nil
 }
 
 // buildOpsRequest 构造 OpsRequest 对象
@@ -297,6 +323,14 @@ func buildOpsRequest(
 
 			SpecificOpsRequest: specificOps,
 		},
+	}
+
+	// 依据 opsType 设置不同的 spec 字段
+	switch opsType {
+	case opv1alpha1.RestoreType:
+		// Restore 中 ClusterName 为通过备份恢复的 Cluster 的名称，会创建一个新的 Cluster，
+		// 应当按照 {cluster.Name(去除后缀)}-restore-{四位随机后缀}" 的格式
+		ops.Spec.ClusterName = generateRestoredClusterName(cluster.Name)
 	}
 
 	return ops
@@ -355,4 +389,27 @@ func isOpsRequestInFinalPhase(ops *opv1alpha1.OpsRequest) bool {
 		phase == opv1alpha1.OpsCancelledPhase ||
 		phase == opv1alpha1.OpsFailedPhase ||
 		phase == opv1alpha1.OpsAbortedPhase
+}
+
+// generateRestoredClusterName 生成 restore cluster 的名称
+// 格式：{cluster.Name(去除后缀)}-restore-{四位随机后缀}
+func generateRestoredClusterName(originalClusterName string) string {
+	var baseName string
+
+	// 避免重复叠加 restore 后缀
+	if strings.Contains(originalClusterName, "-restore-") {
+		restoreIndex := strings.LastIndex(originalClusterName, "-restore-")
+		baseName = originalClusterName[:restoreIndex]
+	} else {
+		lastDash := strings.LastIndex(originalClusterName, "-")
+		baseName = originalClusterName[:lastDash]
+	}
+
+	// 生成4位随机后缀
+	timestamp := time.Now().UnixNano()
+	input := fmt.Sprintf("%s-restore-%d", baseName, timestamp)
+	hash := md5.Sum([]byte(input))
+	hashSuffix := fmt.Sprintf("%x", hash[:2])
+
+	return fmt.Sprintf("%s-restore-%s", baseName, hashSuffix)
 }

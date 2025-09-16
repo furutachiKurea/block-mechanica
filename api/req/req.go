@@ -39,6 +39,11 @@ type GetClusterEventsRequest struct {
 	Pagination
 }
 
+type RestoreFromBackupRequest struct {
+	model.RBDService
+	BackupName string `json:"backup_name"`
+}
+
 type Pagination struct {
 	Page     int `param:"page"`
 	PageSize int `param:"page_size"`

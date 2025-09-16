@@ -16,6 +16,10 @@ type ConnectInfoRes struct {
 	Port         int                 `json:"port"`
 }
 
+type RestoreFromBackupRes struct {
+	NewClusterName string `json:"new_service"`
+}
+
 // Response 定义用于正确返回的 JSON
 type Response struct {
 	Bean          any `json:"bean,omitempty"`

@@ -128,6 +128,11 @@ type Cluster interface {
 	//
 	// 从 Cluster 拥有的 OpsRequest 中获取，按创建时间降序排序
 	GetClusterEvents(ctx context.Context, serviceID string, page, pageSize int) ([]model.EventItem, error)
+
+	// RestoreFromBackup 从用户通过 backupName 指定的备份中 restore cluster，返回 restored cluster 的名称
+	//
+	// 为从备份恢复的 cluster 添加 rbd service-id, 并给旧 cluster 添加 SupersededByRestoreAnnotation 标记，不删除
+	RestoreFromBackup(ctx context.Context, serviceID, backupName string) (string, error)
 }
 
 // Resource 提供集群资源发现和 Rainbond 集成操作
@@ -234,6 +239,9 @@ func (s *DefaultServices) GetPodDetail(ctx context.Context, serviceID string, po
 }
 func (s *DefaultServices) GetClusterEvents(ctx context.Context, serviceID string, page, pageSize int) ([]model.EventItem, error) {
 	return s.Cluster.GetClusterEvents(ctx, serviceID, page, pageSize)
+}
+func (s *DefaultServices) RestoreFromBackup(ctx context.Context, serviceID, backupName string) (string, error) {
+	return s.Cluster.RestoreFromBackup(ctx, serviceID, backupName)
 }
 
 // Resource
