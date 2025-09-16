@@ -129,9 +129,12 @@ type Cluster interface {
 	// 从 Cluster 拥有的 OpsRequest 中获取，按创建时间降序排序
 	GetClusterEvents(ctx context.Context, serviceID string, page, pageSize int) ([]model.EventItem, error)
 
-	// RestoreFromBackup 从用户通过 backupName 指定的备份中 restore cluster，返回 restored cluster 的名称
+	// RestoreFromBackup 从用户通过 backupName 指定的备份中 restore cluster，
+	// 返回 restored cluster 的名称 + clusterDef, 用于 rainbond 更新 kubeblocks_component 信息
 	//
-	// 为从备份恢复的 cluster 添加 rbd service-id, 并给旧 cluster 添加 SupersededByRestoreAnnotation 标记，不删除
+	// 该方法将为恢复的 cluster 添加 rbd service-id,
+	// 将旧 cluster 的 backup 继承(修改 app.kubernetes.io/instance label 为新 cluster)到新 cluster，
+	// 并给旧 cluster 添加 SupersededByRestoreAnnotation 标记
 	RestoreFromBackup(ctx context.Context, serviceID, backupName string) (string, error)
 }
 
