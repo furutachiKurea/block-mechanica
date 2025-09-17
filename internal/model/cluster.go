@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
 	datav1alpha "github.com/apecloud/kubeblocks/apis/dataprotection/v1alpha1"
@@ -214,13 +213,6 @@ type Status struct {
 	Ready  bool            `json:"ready"`
 }
 
-// BackupItem 备份项信息
-type BackupItem struct {
-	Name   string                  `json:"name"`
-	Status datav1alpha.BackupPhase `json:"status"`
-	Time   time.Time               `json:"time"`
-}
-
 // ExpansionContext 伸缩操作的上下文，包含所有相关字段
 type ExpansionContext struct {
 	Cluster       *kbappsv1.Cluster
@@ -369,7 +361,7 @@ type Event struct {
 */
 type EventItem struct {
 	OpsName     string `json:"event_id"`
-	OpsType     string `json:"opt_type"` // TODO 需要考虑是直接使用 OpsRequest name 还是转换成 Rainbond 的那一套
+	OpsType     string `json:"opt_type"`
 	UserName    string `json:"user_name,omitempty"`
 	Status      string `json:"status"`
 	FinalStatus string `json:"final_status"`

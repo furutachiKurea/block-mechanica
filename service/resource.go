@@ -786,16 +786,16 @@ func getComponentByServiceID(ctx context.Context, c client.Client, serviceID str
 // paginate 分页, 从 items 中提取指定页的数据
 func paginate[T any](items []T, page, pageSize int) []T {
 	if page < 1 || pageSize < 1 || len(items) == 0 {
-		return []T{}
+		return nil
 	}
 
 	offset := (page - 1) * pageSize
 	if offset >= len(items) {
-		return []T{}
+		return nil
 	}
 
 	end := min(offset+pageSize, len(items))
-	return items[offset:end]
+	return items[offset:end:end]
 }
 
 // filterParametersByKeyword 对参数列表进行关键词搜索过滤, 匹配参数名称和描述

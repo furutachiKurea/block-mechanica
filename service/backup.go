@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"time"
 
 	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
 	datav1alpha1 "github.com/apecloud/kubeblocks/apis/dataprotection/v1alpha1"
@@ -24,13 +23,6 @@ type BackupRepo struct {
 	Type         string                       `json:"type"`
 	AccessMethod datav1alpha1.AccessMethod    `json:"accessMethod"`
 	Phase        datav1alpha1.BackupRepoPhase `json:"phase"`
-}
-
-// BackupItem 用户备份
-type BackupItem struct {
-	Name   string                   `json:"name"`
-	Status datav1alpha1.BackupPhase `json:"status"`
-	Time   time.Time                `json:"time"`
 }
 
 // 删除备份时的拒绝原因
@@ -196,8 +188,10 @@ func (s *BackupService) BackupCluster(ctx context.Context, req model.BackupInput
 }
 
 // ListBackups 返回给定的 Cluster 的备份列表
-func (s *BackupService) ListBackups(ctx context.Context, req model.BackupListQuerry) ([]*BackupItem, error) {
-	cluster, err := getClusterByServiceID(ctx, s.client, req.ServiceID)
+func (s *BackupService) ListBackups(ctx context.Context, query model.BackupListQuery) (*model.PaginatedResult[model.BackupItem], error) {
+	query.Pagination.Validate()
+
+	cluster, err := getClusterByServiceID(ctx, s.client, query.ServiceID)
 	if err != nil {
 		return nil, err
 	}
@@ -209,7 +203,7 @@ func (s *BackupService) ListBackups(ctx context.Context, req model.BackupListQue
 
 	sortBackupsByTime(backups)
 
-	result := make([]*BackupItem, 0, len(backups))
+	backupList := make([]model.BackupItem, 0, len(backups))
 	for _, backup := range backups {
 		backupTime := backup.CreationTimestamp.UTC()
 		if backup.Status.StartTimestamp != nil {
@@ -221,19 +215,24 @@ func (s *BackupService) ListBackups(ctx context.Context, req model.BackupListQue
 			backupPhase = backup.Status.Phase
 		}
 
-		result = append(result, &BackupItem{
+		backupList = append(backupList, model.BackupItem{
 			Name:   backup.Name,
 			Status: backupPhase,
 			Time:   backupTime,
 		})
 	}
 
-	log.Debug("Retrieved backup list",
-		log.String("cluster", cluster.Name),
-		log.String("service_id", req.ServiceID),
-		log.Int("backup_count", len(result)))
+	result := paginate(backupList, query.Page, query.PageSize)
 
-	return result, nil
+	log.Debug("paginated backup list",
+		log.String("cluster", cluster.Name),
+		log.Any("backupList", backupList),
+	)
+
+	return &model.PaginatedResult[model.BackupItem]{
+		Items: result,
+		Total: len(backupList),
+	}, nil
 }
 
 // listBackupRepos 返回所有命名空间下的 BackupRepo 信息

@@ -36,17 +36,12 @@ type ManageClusterLifecycleRequest struct {
 
 type GetClusterEventsRequest struct {
 	model.RBDService
-	Pagination
+	model.Pagination
 }
 
 type RestoreFromBackupRequest struct {
 	model.RBDService
 	BackupName string `json:"backup_name"`
-}
-
-type Pagination struct {
-	Page     int `param:"page"`
-	PageSize int `param:"page_size"`
 }
 
 // 将 ManageClusterLifecycleRequest 的 Operation 转换为 OpsType

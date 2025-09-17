@@ -598,17 +598,8 @@ func (s *ClusterService) GetPodDetail(ctx context.Context, serviceID string, pod
 // GetClusterEvents 获取指定 KubeBlocks Cluster 的运维事件列表
 //
 // 事件数据来源于与 Cluster 关联的 OpsRequest 资源，按创建时间降序排序
-func (s *ClusterService) GetClusterEvents(ctx context.Context, serviceID string, page, pageSize int) ([]model.EventItem, error) {
-	// 参数验证
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 {
-		pageSize = 6
-	}
-	if pageSize > 100 {
-		pageSize = 100 // 限制最大页面大小
-	}
+func (s *ClusterService) GetClusterEvents(ctx context.Context, serviceID string, pagination model.Pagination) (*model.PaginatedResult[model.EventItem], error) {
+	pagination.Validate()
 
 	cluster, err := getClusterByServiceID(ctx, s.client, serviceID)
 	if err != nil {
@@ -643,21 +634,20 @@ func (s *ClusterService) GetClusterEvents(ctx context.Context, serviceID string,
 		return events[i].CreateTime > events[j].CreateTime
 	})
 
-	startIndex := (page - 1) * pageSize
-	endIndex := startIndex + pageSize
+	result := paginate(events, pagination.Page, pagination.PageSize)
 
-	if startIndex >= len(events) {
-		// 页码超出范围，返回空结果
-		return []model.EventItem{}, nil
-	}
+	log.Debug("get paginated events",
+		log.String("cluster", cluster.Name),
+		log.Any("events", events),
+		log.Int("page", pagination.Page),
+		log.Int("pageSize", pagination.PageSize),
+		log.Any("result", result),
+	)
 
-	if endIndex > len(events) {
-		endIndex = len(events)
-	}
-
-	pageEvents := events[startIndex:endIndex]
-
-	return pageEvents, nil
+	return &model.PaginatedResult[model.EventItem]{
+		Items: result,
+		Total: len(events),
+	}, nil
 }
 
 // RestoreFromBackup 从用户通过 backupName 指定的备份中 restore cluster，

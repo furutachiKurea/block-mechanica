@@ -69,7 +69,7 @@ type Backup interface {
 	BackupCluster(ctx context.Context, backup model.BackupInput) error
 
 	// ListBackups 返回给定的 Cluster 的备份列表
-	ListBackups(ctx context.Context, backupList model.BackupListQuerry) ([]*BackupItem, error)
+	ListBackups(ctx context.Context, query model.BackupListQuery) (*model.PaginatedResult[model.BackupItem], error)
 
 	// DeleteBackups 批量删除指定备份
 	//
@@ -127,7 +127,7 @@ type Cluster interface {
 	// GetClusterEvents 获取指定 KubeBlocks Cluster 的 events
 	//
 	// 从 Cluster 拥有的 OpsRequest 中获取，按创建时间降序排序
-	GetClusterEvents(ctx context.Context, serviceID string, page, pageSize int) ([]model.EventItem, error)
+	GetClusterEvents(ctx context.Context, serviceID string, pagination model.Pagination) (*model.PaginatedResult[model.EventItem], error)
 
 	// RestoreFromBackup 从用户通过 backupName 指定的备份中 restore cluster，
 	// 返回 restored cluster 的名称 + clusterDef, 用于 rainbond 更新 kubeblocks_component 信息
@@ -201,15 +201,19 @@ func New(c client.Client) Services {
 func (s *DefaultServices) ListAvailableBackupRepos(ctx context.Context) ([]*BackupRepo, error) {
 	return s.Backup.ListAvailableBackupRepos(ctx)
 }
+
 func (s *DefaultServices) ReScheduleBackup(ctx context.Context, schedule model.BackupScheduleInput) error {
 	return s.Backup.ReScheduleBackup(ctx, schedule)
 }
+
 func (s *DefaultServices) BackupCluster(ctx context.Context, backup model.BackupInput) error {
 	return s.Backup.BackupCluster(ctx, backup)
 }
-func (s *DefaultServices) ListBackups(ctx context.Context, backupList model.BackupListQuerry) ([]*BackupItem, error) {
-	return s.Backup.ListBackups(ctx, backupList)
+
+func (s *DefaultServices) ListBackups(ctx context.Context, query model.BackupListQuery) (*model.PaginatedResult[model.BackupItem], error) {
+	return s.Backup.ListBackups(ctx, query)
 }
+
 func (s *DefaultServices) DeleteBackups(ctx context.Context, rbd model.RBDService, backups []string) ([]string, error) {
 	return s.Backup.DeleteBackups(ctx, rbd, backups)
 }
@@ -219,30 +223,39 @@ func (s *DefaultServices) DeleteBackups(ctx context.Context, rbd model.RBDServic
 func (s *DefaultServices) CreateCluster(ctx context.Context, cluster model.ClusterInput) (*kbappsv1.Cluster, error) {
 	return s.Cluster.CreateCluster(ctx, cluster)
 }
+
 func (s *DefaultServices) GetConnectInfo(ctx context.Context, rbd model.RBDService) ([]model.ConnectInfo, error) {
 	return s.Cluster.GetConnectInfo(ctx, rbd)
 }
+
 func (s *DefaultServices) GetClusterDetail(ctx context.Context, rbd model.RBDService) (*model.ClusterDetail, error) {
 	return s.Cluster.GetClusterDetail(ctx, rbd)
 }
+
 func (s *DefaultServices) ExpansionCluster(ctx context.Context, expansion model.ExpansionInput) error {
 	return s.Cluster.ExpansionCluster(ctx, expansion)
 }
+
 func (s *DefaultServices) DeleteCluster(ctx context.Context, serviceIDs []string) error {
 	return s.Cluster.DeleteCluster(ctx, serviceIDs)
 }
+
 func (s *DefaultServices) CancelClusterCreate(ctx context.Context, rbd model.RBDService) error {
 	return s.Cluster.CancelClusterCreate(ctx, rbd)
 }
+
 func (s *DefaultServices) ManageClustersLifecycle(ctx context.Context, operation opsv1alpha1.OpsType, serviceIDs []string) *model.BatchOperationResult {
 	return s.Cluster.ManageClustersLifecycle(ctx, operation, serviceIDs)
 }
+
 func (s *DefaultServices) GetPodDetail(ctx context.Context, serviceID string, podName string) (*model.PodDetail, error) {
 	return s.Cluster.GetPodDetail(ctx, serviceID, podName)
 }
-func (s *DefaultServices) GetClusterEvents(ctx context.Context, serviceID string, page, pageSize int) ([]model.EventItem, error) {
-	return s.Cluster.GetClusterEvents(ctx, serviceID, page, pageSize)
+
+func (s *DefaultServices) GetClusterEvents(ctx context.Context, serviceID string, pagination model.Pagination) (*model.PaginatedResult[model.EventItem], error) {
+	return s.Cluster.GetClusterEvents(ctx, serviceID, pagination)
 }
+
 func (s *DefaultServices) RestoreFromBackup(ctx context.Context, serviceID, backupName string) (string, error) {
 	return s.Cluster.RestoreFromBackup(ctx, serviceID, backupName)
 }

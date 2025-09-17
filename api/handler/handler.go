@@ -279,21 +279,17 @@ func (h *Handler) ReScheduleBackup(c echo.Context) error {
 func (h *Handler) GetBackups(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	var rbdService model.RBDService
-	if err := c.Bind(&rbdService); err != nil {
+	var req model.BackupListQuery
+	if err := c.Bind(&req); err != nil {
 		return res.BadRequest(fmt.Errorf("bind request: %w", err))
 	}
 
-	backupListReq := model.BackupListQuerry{
-		RBDService: rbdService,
-	}
-
-	backups, err := h.svc.ListBackups(ctx, backupListReq)
+	result, err := h.svc.ListBackups(ctx, req)
 	if err != nil {
 		return res.InternalError(fmt.Errorf("get backup list: %w", err))
 	}
 
-	return res.ReturnSuccess(c, backups)
+	return res.ReturnList(c, result.Total, req.Page, result.Items)
 }
 
 // CreateBackup 创建 KubeBlocks 数据库集群的备份
@@ -382,12 +378,12 @@ func (h *Handler) GetClusterEvents(c echo.Context) error {
 		return res.BadRequest(fmt.Errorf("bind request: %w", err))
 	}
 
-	events, err := h.svc.GetClusterEvents(ctx, req.ServiceID, req.Page, req.PageSize)
+	result, err := h.svc.GetClusterEvents(ctx, req.ServiceID, req.Pagination)
 	if err != nil {
 		return res.InternalError(fmt.Errorf("get cluster events: %w", err))
 	}
 
-	return res.ReturnSuccess(c, events)
+	return res.ReturnList(c, result.Total, req.Page, result.Items)
 }
 
 // GetClusterParameters 返回 service-id 对应的 KubeBlocks Cluster 的参数设置,
