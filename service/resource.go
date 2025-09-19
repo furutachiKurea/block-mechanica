@@ -9,10 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 
-	"github.com/furutachiKurea/block-mechanica/internal/index"
 	"github.com/furutachiKurea/block-mechanica/internal/log"
 	"github.com/furutachiKurea/block-mechanica/internal/model"
 	"github.com/furutachiKurea/block-mechanica/internal/mono"
@@ -590,50 +588,6 @@ func mergeEntriesAndConstraints(
 	return parameters
 }
 
-// inferParameterType 从参数值推断参数类型
-func inferParameterType(value any) model.ParameterType {
-	if value == nil {
-		return ""
-	}
-
-	switch v := value.(type) {
-	case int, int32, int64, float32, float64:
-		return "integer"
-	case bool:
-		return "boolean"
-	case string:
-		// 尝试解析为数字
-		if strings.Contains(v, ".") {
-			if _, err := strconv.ParseFloat(v, 64); err == nil {
-				return "number"
-			}
-		} else {
-			if _, err := strconv.ParseInt(v, 10, 64); err == nil {
-				return "integer"
-			}
-		}
-
-		// 尝试解析为布尔值
-		if strings.ToUpper(v) == "ON" || strings.ToUpper(v) == "OFF" ||
-			strings.ToLower(v) == "true" || strings.ToLower(v) == "false" {
-			return "boolean"
-		}
-
-		return "string"
-	default:
-		return "string"
-	}
-}
-
-// sliceToSet 将字符串切片转换为集合。
-func sliceToSet(slice []string) map[string]bool {
-	set := make(map[string]bool, len(slice))
-	for _, item := range slice {
-		set[item] = true
-	}
-	return set
-}
-
 // isDynamicParameter 判定参数是否为动态：
 func (s *ResourceService) isDynamicParameter(name string, sets *model.ParameterSets) bool {
 	return sets.Dynamic[name]
@@ -703,99 +657,6 @@ func filterSupportedAddons(addon *model.Addon) bool {
 	} */
 	_, ok := _clusterRegistry[t]
 	return ok
-}
-
-// getClusterByServiceID 通过 service_id 获取对应的 KubeBlocks Cluster，
-// 排除已经重备份恢复的 Cluster 替代的 Cluster
-// 优先 MatchingFields，失败回退到 MatchingLabels
-func getClusterByServiceID(ctx context.Context, c client.Client, serviceID string) (*kbappsv1.Cluster, error) {
-	var list kbappsv1.ClusterList
-
-	// 使用 index
-	if err := c.List(ctx, &list, client.MatchingFields{index.ServiceIDField: serviceID}); err == nil {
-		filteredClusters := filterExcludedClusters(list.Items)
-		switch len(filteredClusters) {
-		case 0:
-			return nil, ErrTargetNotFound
-		case 1:
-			return &filteredClusters[0], nil
-		default:
-			return nil, ErrMultipleFounded
-		}
-	}
-
-	// 回退到 MatchingLabels
-	list = kbappsv1.ClusterList{}
-	if err := c.List(ctx, &list, client.MatchingLabels{index.ServiceIDLabel: serviceID}); err != nil {
-		return nil, fmt.Errorf("list clusters by service_id %s: %w", serviceID, err)
-	}
-
-	filteredClusters := filterExcludedClusters(list.Items)
-	switch len(filteredClusters) {
-	case 0:
-		return nil, ErrTargetNotFound
-	case 1:
-		return &filteredClusters[0], nil
-	default:
-		return nil, ErrMultipleFounded
-	}
-}
-
-// filterExcludedClusters 排除已经重备份恢复的 Cluster 替代的 Cluster
-func filterExcludedClusters(clusters []kbappsv1.Cluster) []kbappsv1.Cluster {
-	return mono.Filter(clusters, func(cluster kbappsv1.Cluster) bool {
-		if cluster.Annotations == nil {
-			return true
-		}
-		_, exists := cluster.Annotations[SupersededByRestoreAnnotation]
-		return !exists
-	})
-}
-
-// getComponentByServiceID 通过 service_id 获取对应的 KubeBlocks Component（Rainbond 侧的 Deployment）
-// 优先使用 MatchingFields，失败回退到 MatchingLabels
-func getComponentByServiceID(ctx context.Context, c client.Client, serviceID string) (*appsv1.Deployment, error) {
-	var list appsv1.DeploymentList
-
-	if err := c.List(ctx, &list, client.MatchingFields{index.ServiceIDField: serviceID}); err == nil {
-		switch len(list.Items) {
-		case 0:
-			return nil, ErrTargetNotFound
-		case 1:
-			return &list.Items[0], nil
-		default:
-			return nil, ErrMultipleFounded
-		}
-	}
-
-	list = appsv1.DeploymentList{}
-	if err := c.List(ctx, &list, client.MatchingLabels{index.ServiceIDLabel: serviceID}); err != nil {
-		return nil, fmt.Errorf("list deployments by service_id %s: %w", serviceID, err)
-	}
-
-	switch len(list.Items) {
-	case 0:
-		return nil, ErrTargetNotFound
-	case 1:
-		return &list.Items[0], nil
-	default:
-		return nil, ErrMultipleFounded
-	}
-}
-
-// paginate 分页, 从 items 中提取指定页的数据
-func paginate[T any](items []T, page, pageSize int) []T {
-	if page < 1 || pageSize < 1 || len(items) == 0 {
-		return nil
-	}
-
-	offset := (page - 1) * pageSize
-	if offset >= len(items) {
-		return nil
-	}
-
-	end := min(offset+pageSize, len(items))
-	return items[offset:end:end]
 }
 
 // filterParametersByKeyword 对参数列表进行关键词搜索过滤, 匹配参数名称和描述

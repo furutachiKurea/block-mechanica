@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"sort"
 
-	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
-	datav1alpha1 "github.com/apecloud/kubeblocks/apis/dataprotection/v1alpha1"
-	"github.com/apecloud/kubeblocks/pkg/constant"
 	"github.com/furutachiKurea/block-mechanica/internal/index"
 	"github.com/furutachiKurea/block-mechanica/internal/log"
 	"github.com/furutachiKurea/block-mechanica/internal/model"
 	"github.com/furutachiKurea/block-mechanica/internal/mono"
+
+	datav1alpha1 "github.com/apecloud/kubeblocks/apis/dataprotection/v1alpha1"
+	"github.com/apecloud/kubeblocks/pkg/constant"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -100,34 +100,28 @@ func (s *BackupService) ReScheduleBackup(ctx context.Context, schedule model.Bac
 			needUpdate = true
 		} else {
 			backupPatch := make(map[string]any)
-			hasChanges := false
 
 			if cluster.Spec.Backup.RepoName != schedule.BackupRepo {
 				backupPatch["repoName"] = schedule.BackupRepo
-				hasChanges = true
 			}
 
 			if cluster.Spec.Backup.CronExpression != schedule.Schedule.Cron() {
 				backupPatch["cronExpression"] = schedule.Schedule.Cron()
-				hasChanges = true
 			}
 
 			if cluster.Spec.Backup.RetentionPeriod != schedule.RetentionPeriod {
 				backupPatch["retentionPeriod"] = schedule.RetentionPeriod
-				hasChanges = true
 			}
 
 			if cluster.Spec.Backup.Enabled == nil || !*cluster.Spec.Backup.Enabled {
 				enabled := true
 				backupPatch["enabled"] = &enabled
-				hasChanges = true
 			}
 
 			// Always ensure method is present to satisfy validation
 			backupPatch["method"] = backupMethod
-			hasChanges = true
 
-			if hasChanges {
+			if len(backupPatch) > 0 {
 				patchData = map[string]any{
 					"spec": map[string]any{
 						"backup": backupPatch,
@@ -189,7 +183,7 @@ func (s *BackupService) BackupCluster(ctx context.Context, req model.BackupInput
 
 // ListBackups 返回给定的 Cluster 的备份列表
 func (s *BackupService) ListBackups(ctx context.Context, query model.BackupListQuery) (*model.PaginatedResult[model.BackupItem], error) {
-	query.Pagination.Validate()
+	query.Validate()
 
 	cluster, err := getClusterByServiceID(ctx, s.client, query.ServiceID)
 	if err != nil {
@@ -251,10 +245,6 @@ func (s *BackupService) listBackupRepos(ctx context.Context) ([]*BackupRepo, err
 		})
 	}
 	return result, nil
-}
-
-func clusterType(cluster *kbappsv1.Cluster) string {
-	return cluster.Spec.ClusterDef
 }
 
 // getBackupsByIndex 使用索引查询 Backup，失败时回退到标签查询

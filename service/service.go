@@ -10,21 +10,16 @@ package service
 import (
 	"context"
 
-	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
-	opsv1alpha1 "github.com/apecloud/kubeblocks/apis/operations/v1alpha1"
-	"github.com/furutachiKurea/block-mechanica/internal/index"
 	"github.com/furutachiKurea/block-mechanica/internal/log"
 	"github.com/furutachiKurea/block-mechanica/internal/model"
 	"github.com/furutachiKurea/block-mechanica/service/adapter"
 	"github.com/furutachiKurea/block-mechanica/service/builder"
 	"github.com/furutachiKurea/block-mechanica/service/coordinator"
+
+	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
+	opsv1alpha1 "github.com/apecloud/kubeblocks/apis/operations/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-)
-
-const (
-	ServiceIDLabel = index.ServiceIDLabel
-	ServiceIDField = index.ServiceIDField
 )
 
 // _clusterRegistry 在这里注册 Block Mechanica 支持的数据库集群，需要实现 adapter.ClusterAdapter 中的 Builder
@@ -90,10 +85,10 @@ type Cluster interface {
 	// 返回成功创建的 KubeBlocks Cluster 实例
 	CreateCluster(ctx context.Context, cluster model.ClusterInput) (*kbappsv1.Cluster, error)
 
-	// DeleteCluster 删除 KubeBlocks 数据库集群
+	// DeleteClusters 删除 KubeBlocks 数据库集群
 	//
 	// 批量删除指定 serviceIDs 对应的 Cluster，忽略找不到的 service_id
-	DeleteCluster(ctx context.Context, serviceIDs []string) error
+	DeleteClusters(ctx context.Context, serviceIDs []string) error
 
 	// CancelClusterCreate 取消集群创建
 	//
@@ -236,8 +231,8 @@ func (s *DefaultServices) ExpansionCluster(ctx context.Context, expansion model.
 	return s.Cluster.ExpansionCluster(ctx, expansion)
 }
 
-func (s *DefaultServices) DeleteCluster(ctx context.Context, serviceIDs []string) error {
-	return s.Cluster.DeleteCluster(ctx, serviceIDs)
+func (s *DefaultServices) DeleteClusters(ctx context.Context, serviceIDs []string) error {
+	return s.Cluster.DeleteClusters(ctx, serviceIDs)
 }
 
 func (s *DefaultServices) CancelClusterCreate(ctx context.Context, rbd model.RBDService) error {

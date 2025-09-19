@@ -431,8 +431,7 @@ func (s *ClusterService) ExpansionCluster(ctx context.Context, expansion model.E
 // DeleteCluster 删除 KubeBlocks 数据库集群
 //
 // 批量删除指定 serviceIDs 对应的 Cluster，忽略找不到的 service_id
-// TODO 命名，目前单数但是删除复数个, maybe DeleteCllusters
-func (s *ClusterService) DeleteCluster(ctx context.Context, serviceIDs []string) error {
+func (s *ClusterService) DeleteClusters(ctx context.Context, serviceIDs []string) error {
 	for _, serviceID := range serviceIDs {
 		err := s.deleteCluster(ctx, serviceID, false)
 		if err != nil {
@@ -1093,16 +1092,6 @@ func toRainbondOptType(opsType opsv1alpha1.OpsType) string {
 	}
 }
 
-// findFailedCondition 查找失败状态的 Condition
-func findFailedCondition(conditions []metav1.Condition) *metav1.Condition {
-	for _, cond := range conditions {
-		if cond.Status == metav1.ConditionFalse {
-			return &cond
-		}
-	}
-	return nil
-}
-
 // handleHorizontalScaling 处理水平伸缩（副本数）
 func (s *ClusterService) handleHorizontalScaling(ctx context.Context, scalingCtx model.ExpansionContext) (bool, error) {
 	if scalingCtx.DesiredReplicas == scalingCtx.CurrentReplicas {
@@ -1430,19 +1419,6 @@ func getStartTimeISO(conditions []metav1.Condition) string {
 	}
 	return formatToISO8601Time(last.Time)
 }
-
-// formatToISO8601Time 将标准 time.Time 转为 ISO 8601（RFC3339，UTC）字符串
-func formatToISO8601Time(t time.Time) string {
-	return t.UTC().Format(time.RFC3339)
-}
-
-// formatTimeWithOffset 将时间格式化为带数字时区偏移的 RFC3339 格式
-// 形如: 2025-09-09T16:51:59+08:00
-func formatTimeWithOffset(t time.Time) string {
-	localTime := t.In(time.Local)
-	return localTime.Format(time.RFC3339)
-}
-
 func transStatus(status string) string {
 	switch status {
 	case "creating":
@@ -1533,18 +1509,6 @@ func buildContainerDetails(containers []corev1.Container, containerStatuses []co
 	}
 
 	return details
-}
-
-// hasResourceLimits 检查是否设置了 CPU 或 Memory 资源限制
-func hasResourceLimits(limits corev1.ResourceList) bool {
-	if limits == nil {
-		return false
-	}
-
-	cpu, hasCPU := limits[corev1.ResourceCPU]
-	memory, hasMemory := limits[corev1.ResourceMemory]
-
-	return (hasCPU && !cpu.IsZero()) || (hasMemory && !memory.IsZero())
 }
 
 // getPodEventsByIndex 使用索引查询 Pod 相关的 Event
