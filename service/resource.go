@@ -26,12 +26,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const (
-	// SupersededByRestoreAnnotation 标记已被备份恢复替代的旧 Cluster
-	// 当从备份恢复创建新cluster后，原cluster会被标记此annotation以避免查询冲突
-	// getClusterByServiceID 会自动过滤掉带有此annotation的cluster
-	SupersededByRestoreAnnotation = "block-mechanica.rainbond.io/superseded-by-restore"
-)
 
 // ResourceService 提供集群资源相关操作
 type ResourceService struct {

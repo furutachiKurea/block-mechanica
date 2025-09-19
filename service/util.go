@@ -9,7 +9,6 @@ import (
 
 	"github.com/furutachiKurea/block-mechanica/internal/index"
 	"github.com/furutachiKurea/block-mechanica/internal/model"
-	"github.com/furutachiKurea/block-mechanica/internal/mono"
 
 	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -18,20 +17,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// getClusterByServiceID 通过 service_id 获取对应的 KubeBlocks Cluster，
-// 排除已经重备份恢复的 Cluster 替代的 Cluster
-// 优先 MatchingFields，失败回退到 MatchingLabels
+// getClusterByServiceID 通过 service_id 获取对应的 KubeBlocks Cluster
+// 优先使用 MatchingFields 索引查询，失败时回退到 MatchingLabels
 func getClusterByServiceID(ctx context.Context, c client.Client, serviceID string) (*kbappsv1.Cluster, error) {
 	var list kbappsv1.ClusterList
 
 	// 使用 index
 	if err := c.List(ctx, &list, client.MatchingFields{index.ServiceIDField: serviceID}); err == nil {
-		filteredClusters := filterExcludedClusters(list.Items)
-		switch len(filteredClusters) {
+		switch len(list.Items) {
 		case 0:
 			return nil, ErrTargetNotFound
 		case 1:
-			return &filteredClusters[0], nil
+			return &list.Items[0], nil
 		default:
 			return nil, ErrMultipleFounded
 		}
@@ -43,12 +40,11 @@ func getClusterByServiceID(ctx context.Context, c client.Client, serviceID strin
 		return nil, fmt.Errorf("list clusters by service_id %s: %w", serviceID, err)
 	}
 
-	filteredClusters := filterExcludedClusters(list.Items)
-	switch len(filteredClusters) {
+	switch len(list.Items) {
 	case 0:
 		return nil, ErrTargetNotFound
 	case 1:
-		return &filteredClusters[0], nil
+		return &list.Items[0], nil
 	default:
 		return nil, ErrMultipleFounded
 	}
@@ -182,13 +178,3 @@ func hasResourceLimits(limits v1.ResourceList) bool {
 	return (hasCPU && !cpu.IsZero()) || (hasMemory && !memory.IsZero())
 }
 
-// filterExcludedClusters 排除已经重备份恢复的 Cluster 替代的 Cluster
-func filterExcludedClusters(clusters []kbappsv1.Cluster) []kbappsv1.Cluster {
-	return mono.Filter(clusters, func(cluster kbappsv1.Cluster) bool {
-		if cluster.Annotations == nil {
-			return true
-		}
-		_, exists := cluster.Annotations[SupersededByRestoreAnnotation]
-		return !exists
-	})
-}

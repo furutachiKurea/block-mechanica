@@ -41,6 +41,7 @@ type GetClusterEventsRequest struct {
 
 type RestoreFromBackupRequest struct {
 	model.RBDService
+	NewServiceID string `json:"new_service_id"`
 	BackupName string `json:"backup_name"`
 }
 

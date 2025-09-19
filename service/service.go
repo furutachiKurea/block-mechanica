@@ -125,12 +125,10 @@ type Cluster interface {
 	GetClusterEvents(ctx context.Context, serviceID string, pagination model.Pagination) (*model.PaginatedResult[model.EventItem], error)
 
 	// RestoreFromBackup 从用户通过 backupName 指定的备份中 restore cluster，
-	// 返回 restored cluster 的名称 + clusterDef, 用于 rainbond 更新 kubeblocks_component 信息
+	// 返回 restored cluster 的名称 + clusterDef, 用于 Rainbond 更新 KubeBlocks Component 信息
 	//
-	// 该方法将为恢复的 cluster 添加 rbd service-id,
-	// 将旧 cluster 的 backup 继承(修改 app.kubernetes.io/instance label 为新 cluster)到新 cluster，
-	// 并给旧 cluster 添加 SupersededByRestoreAnnotation 标记
-	RestoreFromBackup(ctx context.Context, serviceID, backupName string) (string, error)
+	// 该方法将为恢复的 cluster 通过 newServiceID 绑定到一个新的 KubeBlocks Component 中
+	RestoreFromBackup(ctx context.Context, oldServiceID, newServiceID, backupName string) (string, error)
 }
 
 // Resource 提供集群资源发现和 Rainbond 集成操作
@@ -251,8 +249,8 @@ func (s *DefaultServices) GetClusterEvents(ctx context.Context, serviceID string
 	return s.Cluster.GetClusterEvents(ctx, serviceID, pagination)
 }
 
-func (s *DefaultServices) RestoreFromBackup(ctx context.Context, serviceID, backupName string) (string, error) {
-	return s.Cluster.RestoreFromBackup(ctx, serviceID, backupName)
+func (s *DefaultServices) RestoreFromBackup(ctx context.Context, oldServiceID, newServiceID, backupName string) (string, error) {
+	return s.Cluster.RestoreFromBackup(ctx, oldServiceID, newServiceID, backupName)
 }
 
 // Resource

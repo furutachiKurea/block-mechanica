@@ -145,7 +145,7 @@ func (h *Handler) DeleteCluster(c echo.Context) error {
 		return res.BadRequest(fmt.Errorf("bind request: %w", err))
 	}
 
-	if err := h.svc.DeleteCluster(ctx, req.ServiceIDs); err != nil {
+	if err := h.svc.DeleteClusters(ctx, req.ServiceIDs); err != nil {
 		return res.InternalError(fmt.Errorf("delete clusters: %w", err))
 	}
 
@@ -446,7 +446,7 @@ func (h *Handler) RestoreClusterFromBackup(c echo.Context) error {
 		return res.BadRequest(fmt.Errorf("bind request: %w", err))
 	}
 
-	restoredCluster, err := h.svc.RestoreFromBackup(ctx, req.ServiceID, req.BackupName)
+	restoredCluster, err := h.svc.RestoreFromBackup(ctx, req.ServiceID, req.NewServiceID, req.BackupName)
 	if err != nil {
 		return res.InternalError(fmt.Errorf("restore cluster from backup: %w", err))
 	}
