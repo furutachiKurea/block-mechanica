@@ -1,4 +1,4 @@
-package service
+package backup
 
 import (
 	"context"
@@ -10,6 +10,8 @@ import (
 	"github.com/furutachiKurea/block-mechanica/internal/log"
 	"github.com/furutachiKurea/block-mechanica/internal/model"
 	"github.com/furutachiKurea/block-mechanica/internal/mono"
+	"github.com/furutachiKurea/block-mechanica/service/kbkit"
+	"github.com/furutachiKurea/block-mechanica/service/registry"
 
 	datav1alpha1 "github.com/apecloud/kubeblocks/apis/dataprotection/v1alpha1"
 	"github.com/apecloud/kubeblocks/pkg/constant"
@@ -18,38 +20,30 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type BackupRepo struct {
-	Name         string                       `json:"name"`
-	Type         string                       `json:"type"`
-	AccessMethod datav1alpha1.AccessMethod    `json:"accessMethod"`
-	Phase        datav1alpha1.BackupRepoPhase `json:"phase"`
-}
-
-// 删除备份时的拒绝原因
 const (
 	ReasonBackupRunning = "备份正在执行中，无法删除"
 )
 
-// BackupService 提供 BackupRepo 相关操作
+// Service 提供 BackupRepo 相关操作
 // 依赖 controller-runtime client
-type BackupService struct {
+type Service struct {
 	client client.Client
 }
 
-func NewBackupService(c client.Client) *BackupService {
-	return &BackupService{
+func NewService(c client.Client) *Service {
+	return &Service{
 		client: c,
 	}
 }
 
 // ListAvailableBackupRepos 返回所有 Available 的 BackupRepo
-func (s *BackupService) ListAvailableBackupRepos(ctx context.Context) ([]*BackupRepo, error) {
+func (s *Service) ListAvailableBackupRepos(ctx context.Context) ([]*model.BackupRepo, error) {
 	repos, err := s.listBackupRepos(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	available := mono.Filter(repos, func(r *BackupRepo) bool {
+	available := mono.Filter(repos, func(r *model.BackupRepo) bool {
 		return r.Phase == datav1alpha1.BackupRepoReady
 	})
 
@@ -59,14 +53,14 @@ func (s *BackupService) ListAvailableBackupRepos(ctx context.Context) ([]*Backup
 // ReScheduleBackup 重新调度 Cluster 的备份配置
 //
 // 通过 Patch cluster 中的备份字段来实现 back schedule 的更新
-func (s *BackupService) ReScheduleBackup(ctx context.Context, schedule model.BackupScheduleInput) error {
-	cluster, err := getClusterByServiceID(ctx, s.client, schedule.ServiceID)
+func (s *Service) ReScheduleBackup(ctx context.Context, schedule model.BackupScheduleInput) error {
+	cluster, err := kbkit.GetClusterByServiceID(ctx, s.client, schedule.ServiceID)
 	if err != nil {
 		return fmt.Errorf("get cluster by service_id: %w", err)
 	}
 
 	// Determine backup method based on cluster type (required by KubeBlocks)
-	adapter := _clusterRegistry[clusterType(cluster)]
+	adapter := registry.Cluster[kbkit.ClusterType(cluster)]
 	backupMethod := adapter.Coordinator.GetBackupMethod()
 
 	needUpdate := false
@@ -152,17 +146,17 @@ func (s *BackupService) ReScheduleBackup(ctx context.Context, schedule model.Bac
 // BackupCluster 执行集群备份操作
 //
 // 参考：https://kubeblocks.io/docs/preview/kubeblocks-for-mysql/05-backup-restore/02-create-full-backup
-func (s *BackupService) BackupCluster(ctx context.Context, req model.BackupInput) error {
+func (s *Service) BackupCluster(ctx context.Context, req model.BackupInput) error {
 	log.Debug("Starting backup operation",
 		log.String("service_id", req.ServiceID),
 	)
 
-	cluster, err := getClusterByServiceID(ctx, s.client, req.ServiceID)
+	cluster, err := kbkit.GetClusterByServiceID(ctx, s.client, req.ServiceID)
 	if err != nil {
 		return fmt.Errorf("get cluster by service_id: %w", err)
 	}
 
-	adapter := _clusterRegistry[clusterType(cluster)]
+	adapter := registry.Cluster[kbkit.ClusterType(cluster)]
 
 	if cluster.Spec.Backup == nil || !*cluster.Spec.Backup.Enabled {
 		return fmt.Errorf("backup is not enabled for cluster %s", cluster.Name)
@@ -170,7 +164,7 @@ func (s *BackupService) BackupCluster(ctx context.Context, req model.BackupInput
 
 	backupMethod := adapter.Coordinator.GetBackupMethod()
 
-	if err := createBackupOpsRequest(ctx, s.client, cluster, backupMethod); err != nil {
+	if err := kbkit.CreateBackupOpsRequest(ctx, s.client, cluster, backupMethod); err != nil {
 		return fmt.Errorf("create backup opsrequest: %w", err)
 	}
 
@@ -182,10 +176,10 @@ func (s *BackupService) BackupCluster(ctx context.Context, req model.BackupInput
 }
 
 // ListBackups 返回给定的 Cluster 的备份列表
-func (s *BackupService) ListBackups(ctx context.Context, query model.BackupListQuery) (*model.PaginatedResult[model.BackupItem], error) {
+func (s *Service) ListBackups(ctx context.Context, query model.BackupListQuery) (*model.PaginatedResult[model.BackupItem], error) {
 	query.Validate()
 
-	cluster, err := getClusterByServiceID(ctx, s.client, query.ServiceID)
+	cluster, err := kbkit.GetClusterByServiceID(ctx, s.client, query.ServiceID)
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +210,7 @@ func (s *BackupService) ListBackups(ctx context.Context, query model.BackupListQ
 		})
 	}
 
-	result := paginate(backupList, query.Page, query.PageSize)
+	result := kbkit.Paginate(backupList, query.Page, query.PageSize)
 
 	log.Debug("paginated backup list",
 		log.String("cluster", cluster.Name),
@@ -230,14 +224,14 @@ func (s *BackupService) ListBackups(ctx context.Context, query model.BackupListQ
 }
 
 // listBackupRepos 返回所有命名空间下的 BackupRepo 信息
-func (s *BackupService) listBackupRepos(ctx context.Context) ([]*BackupRepo, error) {
+func (s *Service) listBackupRepos(ctx context.Context) ([]*model.BackupRepo, error) {
 	var repoList datav1alpha1.BackupRepoList
 	if err := s.client.List(ctx, &repoList); err != nil {
 		return nil, fmt.Errorf("list BackupRepo: %w", err)
 	}
-	result := make([]*BackupRepo, 0, len(repoList.Items))
+	result := make([]*model.BackupRepo, 0, len(repoList.Items))
 	for _, item := range repoList.Items {
-		result = append(result, &BackupRepo{
+		result = append(result, &model.BackupRepo{
 			Name:         item.Name,
 			Type:         item.Spec.StorageProviderRef,
 			AccessMethod: item.Spec.AccessMethod,
@@ -268,8 +262,8 @@ func getBackupsByIndex(ctx context.Context, c client.Client, clusterName, namesp
 //
 // 根据 service_id 查找对应的 Cluster，然后删除请求中指定名称的备份
 // 返回成功删除的备份名称列表
-func (s *BackupService) DeleteBackups(ctx context.Context, rbd model.RBDService, backupNames []string) ([]string, error) {
-	cluster, err := getClusterByServiceID(ctx, s.client, rbd.ServiceID)
+func (s *Service) DeleteBackups(ctx context.Context, rbd model.RBDService, backupNames []string) ([]string, error) {
+	cluster, err := kbkit.GetClusterByServiceID(ctx, s.client, rbd.ServiceID)
 	if err != nil {
 		return nil, fmt.Errorf("get cluster by service_id %s: %w", rbd.ServiceID, err)
 	}
@@ -314,7 +308,7 @@ func (s *BackupService) DeleteBackups(ctx context.Context, rbd model.RBDService,
 }
 
 // canDeleteBackup 检查备份是否可以安全删除
-func (s *BackupService) canDeleteBackup(backup *datav1alpha1.Backup) (bool, string) {
+func (s *Service) canDeleteBackup(backup *datav1alpha1.Backup) (bool, string) {
 	if backup.Status.Phase == datav1alpha1.BackupPhaseRunning {
 		return false, ReasonBackupRunning
 	}

@@ -10,35 +10,14 @@ package service
 import (
 	"context"
 
-	"github.com/furutachiKurea/block-mechanica/internal/log"
 	"github.com/furutachiKurea/block-mechanica/internal/model"
-	"github.com/furutachiKurea/block-mechanica/service/adapter"
-	"github.com/furutachiKurea/block-mechanica/service/builder"
-	"github.com/furutachiKurea/block-mechanica/service/coordinator"
+	"github.com/furutachiKurea/block-mechanica/service/backup"
+	"github.com/furutachiKurea/block-mechanica/service/cluster"
+	"github.com/furutachiKurea/block-mechanica/service/resource"
 
 	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
 	opsv1alpha1 "github.com/apecloud/kubeblocks/apis/operations/v1alpha1"
-	appsv1 "k8s.io/api/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-)
-
-// _clusterRegistry 在这里注册 Block Mechanica 支持的数据库集群，需要实现 adapter.ClusterAdapter 中的 Builder
-var _clusterRegistry = map[string]adapter.ClusterAdapter{
-	"postgresql": _postgresql,
-	"mysql":      _mysql,
-	// ... new types here
-}
-
-var (
-	_postgresql = adapter.ClusterAdapter{
-		Builder:     &builder.PostgreBuilder{},
-		Coordinator: &coordinator.PostgreSQLCoordinator{},
-	}
-
-	_mysql = adapter.ClusterAdapter{
-		Builder:     &builder.MySQLBuilder{},
-		Coordinator: &coordinator.MySQLCoordinator{},
-	}
 )
 
 var _ Services = (*DefaultServices)(nil)
@@ -53,7 +32,7 @@ type Services interface {
 // Backup 提供 KubeBlocks 的 Backup 相关操作
 type Backup interface {
 	// ListAvailableBackupRepos 返回所有 Available 的 BackupRepo
-	ListAvailableBackupRepos(ctx context.Context) ([]*BackupRepo, error)
+	ListAvailableBackupRepos(ctx context.Context) ([]*model.BackupRepo, error)
 
 	// ReScheduleBackup 重新调度 Cluster 的备份配置
 	//
@@ -129,6 +108,12 @@ type Cluster interface {
 	//
 	// 该方法将为恢复的 cluster 通过 newServiceID 绑定到一个新的 KubeBlocks Component 中
 	RestoreFromBackup(ctx context.Context, oldServiceID, newServiceID, backupName string) (string, error)
+
+	// GetClusterParameter 获取指定 KubeBlocks Cluster 的参数
+	GetClusterParameter(ctx context.Context, query model.ClusterParametersQuery) (*model.PaginatedResult[model.Parameter], error)
+
+	// ChangeClusterParameter 变更指定 KubeBlocks Cluster 的参数
+	ChangeClusterParameter(ctx context.Context, req model.ClusterParametersChange) (*model.ParameterChangeResult, error)
 }
 
 // Resource 提供集群资源发现和 Rainbond 集成操作
@@ -144,24 +129,8 @@ type Resource interface {
 	// 如果给定的 req.RBDService.ID 能够匹配到一个 KubeBlocks Cluster，则说明该 Rainbond 组件为 KubeBlocks Component
 	CheckKubeBlocksComponent(ctx context.Context, rbd model.RBDService) (*model.KubeBlocksComponentInfo, error)
 
-	// GetClusterByServiceID 通过 service_id 获取对应的 KubeBlocks Cluster
-	//
-	// 封装 GetClusterByServiceID 方法
-	GetClusterByServiceID(ctx context.Context, serviceID string) (*kbappsv1.Cluster, error)
-
-	// GetKubeBlocksComponentByServiceID 通过 service_id 获取对应的 KubeBlocks Component（Rainbond 侧的 Deployment）
-	//
-	// 封装 getComponentByServiceID 方法
-	GetKubeBlocksComponentByServiceID(ctx context.Context, serviceID string) (*appsv1.Deployment, error)
-
 	// GetClusterPort 返回指定数据库在 KubeBlocks service 中的目标端口
 	GetClusterPort(ctx context.Context, serviceID string) int
-
-	// GetClusterParameter 获取指定 KubeBlocks Cluster 的参数
-	GetClusterParameter(ctx context.Context, query model.ClusterParametersQuery) (*model.PaginatedResult[model.Parameter], error)
-
-	// ChangeClusterParameter 变更指定 KubeBlocks Cluster 的参数
-	ChangeClusterParameter(ctx context.Context, req model.ClusterParametersChange) (*model.ParameterChangeResult, error)
 }
 
 // DefaultServices 为聚合接口的默认实现，委托到具体子服务
@@ -172,7 +141,7 @@ type DefaultServices struct {
 }
 
 // NewServices 构建聚合服务实例
-func NewServices(backup *BackupService, cluster *ClusterService, resource *ResourceService) Services {
+func NewServices(backup *backup.Service, cluster *cluster.Service, resource *resource.Service) Services {
 	return &DefaultServices{
 		Backup:   backup,
 		Cluster:  cluster,
@@ -183,15 +152,15 @@ func NewServices(backup *BackupService, cluster *ClusterService, resource *Resou
 // New 构造 Services
 func New(c client.Client) Services {
 	return NewServices(
-		NewBackupService(c),
-		NewClusterService(c),
-		NewResourceService(c),
+		backup.NewService(c),
+		cluster.NewService(c),
+		resource.NewService(c),
 	)
 }
 
 // Backup
 
-func (s *DefaultServices) ListAvailableBackupRepos(ctx context.Context) ([]*BackupRepo, error) {
+func (s *DefaultServices) ListAvailableBackupRepos(ctx context.Context) ([]*model.BackupRepo, error) {
 	return s.Backup.ListAvailableBackupRepos(ctx)
 }
 
@@ -270,34 +239,10 @@ func (s *DefaultServices) GetClusterPort(ctx context.Context, serviceID string) 
 	return s.Resource.GetClusterPort(ctx, serviceID)
 }
 
-func (s *DefaultServices) GetClusterByServiceID(ctx context.Context, serviceID string) (*kbappsv1.Cluster, error) {
-	return s.Resource.GetClusterByServiceID(ctx, serviceID)
-}
-
-func (s *DefaultServices) GetKubeBlocksComponentByServiceID(ctx context.Context, serviceID string) (*appsv1.Deployment, error) {
-	return s.Resource.GetKubeBlocksComponentByServiceID(ctx, serviceID)
-}
-
 func (s *DefaultServices) GetClusterParameter(ctx context.Context, query model.ClusterParametersQuery) (*model.PaginatedResult[model.Parameter], error) {
-	return s.Resource.GetClusterParameter(ctx, query)
+	return s.Cluster.GetClusterParameter(ctx, query)
 }
 
 func (s *DefaultServices) ChangeClusterParameter(ctx context.Context, req model.ClusterParametersChange) (*model.ParameterChangeResult, error) {
-	return s.Resource.ChangeClusterParameter(ctx, req)
-}
-
-// init 函数进行注册表验证
-func init() {
-	validateClusterRegistry()
-}
-
-// validateClusterRegistry 验证集群注册表的完整性
-func validateClusterRegistry() {
-	for dbType, adapter := range _clusterRegistry {
-		if err := adapter.Validate(); err != nil {
-			log.Fatal("Critical validation error", log.String("DB Type", dbType), log.Err(err))
-		}
-		log.Info("Database validation passed", log.String("DB Type", dbType))
-	}
-	log.Info("All database validation passed")
+	return s.Cluster.ChangeClusterParameter(ctx, req)
 }

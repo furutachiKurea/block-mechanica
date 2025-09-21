@@ -1,4 +1,4 @@
-package service
+package kbkit
 
 import (
 	"errors"
@@ -43,7 +43,7 @@ type ParameterErrCode string
 // 提供详细的错误信息和标准化的错误码
 type ParameterValidationError struct {
 	ParameterName string           // 参数名称
-	ErrorCode     ParameterErrCode //用于向 Rainbond 展示的错误码
+	ErrorCode     ParameterErrCode // 用于向 Rainbond 展示的错误码
 	ErrorMessage  string           // 详细错误信息
 	Cause         error            // 底层错误
 }
@@ -58,7 +58,8 @@ func (e *ParameterValidationError) Error() string {
 
 // Is supports errors.Is
 func (e *ParameterValidationError) Is(target error) bool {
-	if t, ok := target.(*ParameterValidationError); ok {
+	var t *ParameterValidationError
+	if errors.As(target, &t) {
 		return e.ErrorCode == t.ErrorCode && e.ParameterName == t.ParameterName
 	}
 	return false

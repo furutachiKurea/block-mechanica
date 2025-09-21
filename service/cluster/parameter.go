@@ -1,132 +1,38 @@
-package service
-
-// resource.go 提供集群资源的相关操作
-// TODO 拆分文件或者分包
+package cluster
 
 import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
+	"github.com/apecloud/kubeblocks/apis/parameters/v1alpha1"
 	"github.com/furutachiKurea/block-mechanica/internal/log"
 	"github.com/furutachiKurea/block-mechanica/internal/model"
-	"github.com/furutachiKurea/block-mechanica/internal/mono"
+	"github.com/furutachiKurea/block-mechanica/service/kbkit"
+	"github.com/furutachiKurea/block-mechanica/service/registry"
 
 	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
-	parametersv1alpha1 "github.com/apecloud/kubeblocks/apis/parameters/v1alpha1"
 	"github.com/sahilm/fuzzy"
 	"golang.org/x/sync/errgroup"
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-
-// ResourceService 提供集群资源相关操作
-type ResourceService struct {
-	client client.Client
-}
-
-func NewResourceService(c client.Client) *ResourceService {
-	return &ResourceService{
-		client: c,
-	}
-}
-
-// GetStorageClasses 返回集群中所有的 StorageClass 的名称
-func (s *ResourceService) GetStorageClasses(ctx context.Context) (model.StorageClasses, error) {
-	var scList storagev1.StorageClassList
-	if err := s.client.List(ctx, &scList); err != nil {
-		return nil, fmt.Errorf("list StorageClass: %w", err)
-	}
-	names := make([]string, 0, len(scList.Items))
-	for _, sc := range scList.Items {
-		names = append(names, sc.Name)
-	}
-
-	return mono.Sorted(names), nil
-}
-
-// GetAddons 获取所有可用的 Addon（数据库类型与版本）
-func (s *ResourceService) GetAddons(ctx context.Context) ([]*model.Addon, error) {
-	var cmpvList kbappsv1.ComponentVersionList
-	if err := s.client.List(ctx, &cmpvList); err != nil {
-		return nil, fmt.Errorf("get component version list: %w", err)
-	}
-
-	addons := make([]*model.Addon, 0, len(cmpvList.Items))
-	for _, item := range cmpvList.Items {
-		releases := make([]string, 0, len(item.Spec.Releases))
-		for _, release := range item.Spec.Releases {
-			releases = append(releases, release.ServiceVersion)
-		}
-
-		addon := &model.Addon{
-			Type:    item.Name,
-			Version: mono.Sorted(releases),
-		}
-		addons = append(addons, addon)
-	}
-
-	return mono.FilterThenSort(addons, filterSupportedAddons, func(a, b *model.Addon) bool {
-		return a.Type < b.Type
-	}), nil
-}
-
-// CheckKubeBlocksComponent 依据 RBDService 判定该 Rainbond 组件是否为 KubeBlocks Component，如果是，则还返回 KubeBlocks Component 对应的 Cluster 的数据库类型
-//
-// 如果给定的 req.RBDService.ID 能够匹配到一个 KubeBlocks Cluster，则说明该 Rainbond 组件为 KubeBlocks Component
-func (s *ResourceService) CheckKubeBlocksComponent(ctx context.Context, rbd model.RBDService) (*model.KubeBlocksComponentInfo, error) {
-	cluster, err := getClusterByServiceID(ctx, s.client, rbd.ServiceID)
-	info := &model.KubeBlocksComponentInfo{IsKubeBlocksComponent: err == nil}
-	if err == nil {
-		info.DatabaseType = cluster.Spec.ClusterDef
-	}
-
-	return info, nil
-}
-
-// GetClusterByServiceID 通过 service_id 获取对应的 KubeBlocks Cluster
-//
-// 封装 GetClusterByServiceID 方法
-func (s *ResourceService) GetClusterByServiceID(ctx context.Context, serviceID string) (*kbappsv1.Cluster, error) {
-	return getClusterByServiceID(ctx, s.client, serviceID)
-}
-
-// GetKubeBlocksComponentByServiceID 通过 service_id 获取对应的 KubeBlocks Component（Rainbond 侧的 Deployment）
-//
-// 封装 getComponentByServiceID 方法
-func (s *ResourceService) GetKubeBlocksComponentByServiceID(ctx context.Context, serviceID string) (*appsv1.Deployment, error) {
-	return getComponentByServiceID(ctx, s.client, serviceID)
-}
-
-// GetClusterPort 返回指定数据库在 KubeBlocks service 中的目标端口
-func (s *ResourceService) GetClusterPort(ctx context.Context, serviceID string) int {
-	cluster, err := getClusterByServiceID(ctx, s.client, serviceID)
-	if err != nil {
-		return -1
-	}
-	adapter, ok := _clusterRegistry[cluster.Spec.ClusterDef]
-	if !ok {
-		return -1
-	}
-	return adapter.Coordinator.TargetPort()
-}
-
 // GetClusterParameter 获取 KubeBlocks Cluster 的 Parameter
-func (s *ResourceService) GetClusterParameter(ctx context.Context, query model.ClusterParametersQuery) (*model.PaginatedResult[model.Parameter], error) {
+func (s *Service) GetClusterParameter(ctx context.Context, query model.ClusterParametersQuery) (*model.PaginatedResult[model.Parameter], error) {
 	// 先通过 ComponentDefinition 获取 Parameters(value 为 definition 中的默认值)，
 	// 再通过 configmap 从数据库配置文件构造 ParameterEntry，
 	// 最后将获取到的 Parameters 与 ParameterEntry 取交集，确保只返回数据库配置文件中的 Parameter
 
 	query.Validate()
 
-	cluster, err := getClusterByServiceID(ctx, s.client, query.ServiceID)
+	cluster, err := kbkit.GetClusterByServiceID(ctx, s.client, query.ServiceID)
 	if err != nil {
 		return nil, fmt.Errorf("get cluster by service_id %s: %w", query.ServiceID, err)
 	}
@@ -156,7 +62,19 @@ func (s *ResourceService) GetClusterParameter(ctx context.Context, query model.C
 		return nil
 	})
 
-	if err := g.Wait(); err != nil {
+	if err := g.Wait(); errors.Is(err, kbkit.ErrTargetNotFound) {
+		// 不支持 parameter 的 cluster 返回空列表，而不是报错
+		log.Info(
+			"cluster does not support parameter",
+			log.String("serviceID", cluster.Name),
+			log.String("clusterType", cluster.Spec.ClusterDef),
+			log.String("serviceID", query.ServiceID),
+		)
+		return &model.PaginatedResult[model.Parameter]{
+			Items: []model.Parameter{},
+			Total: 0,
+		}, nil
+	} else if err != nil {
 		return nil, err
 	}
 
@@ -175,7 +93,7 @@ func (s *ResourceService) GetClusterParameter(ctx context.Context, query model.C
 	})
 
 	totalCount := len(parameters)
-	result := paginate(parameters, query.Page, query.PageSize)
+	result := kbkit.Paginate(parameters, query.Page, query.PageSize)
 
 	log.Debug("get paginated parameters", log.Any("parameters", parameters))
 	return &model.PaginatedResult[model.Parameter]{
@@ -185,11 +103,11 @@ func (s *ResourceService) GetClusterParameter(ctx context.Context, query model.C
 }
 
 // ChangeClusterParameter 变更给定 service_id 对应的 Cluster 的参数设置
-func (s *ResourceService) ChangeClusterParameter(
+func (s *Service) ChangeClusterParameter(
 	ctx context.Context,
 	req model.ClusterParametersChange,
 ) (*model.ParameterChangeResult, error) {
-	cluster, err := getClusterByServiceID(ctx, s.client, req.ServiceID)
+	cluster, err := kbkit.GetClusterByServiceID(ctx, s.client, req.ServiceID)
 	if err != nil {
 		return nil, fmt.Errorf("get cluster by service_id %s: %w", req.ServiceID, err)
 	}
@@ -206,7 +124,7 @@ func (s *ResourceService) ChangeClusterParameter(
 	}
 
 	// 创建参数验证器
-	validator := NewParameterValidator(constraintList)
+	validator := kbkit.NewParameterValidator(constraintList)
 
 	paramCount := len(req.Parameters)
 	applied := make([]string, 0, paramCount)                        // 成功应用的参数名称列表
@@ -237,7 +155,7 @@ func (s *ResourceService) ChangeClusterParameter(
 
 	// 创建 OpsRequest（仅当存在有效参数变更时）
 	if len(validParameters) > 0 {
-		if err := createParameterChangeOpsRequest(ctx, s.client, cluster, validParameters); err != nil {
+		if err := kbkit.CreateParameterChangeOpsRequest(ctx, s.client, cluster, validParameters); err != nil {
 			return nil, fmt.Errorf("create parameter change OpsRequest: %w", err)
 		}
 
@@ -262,7 +180,7 @@ func (s *ResourceService) ChangeClusterParameter(
 // getParameterConstraints 从 KubeBlocks 的参数定义中提取参数约束为 map[string]model.Parameter
 // 返回 dynamic、static 与 immutable；componentName 可选，未提供则回退第一个普通组件
 // 返回 map[string]model.Parameter，便于后续合并参数约束
-func (s *ResourceService) getParameterConstraints(
+func (s *Service) getParameterConstraints(
 	ctx context.Context,
 	cluster *kbappsv1.Cluster,
 	componentName ...string,
@@ -311,7 +229,6 @@ func (s *ResourceService) getParameterConstraints(
 		for paramName, property := range properties {
 			param := s.buildParameterConstraint(paramName, property, paramSets)
 			if _, exists := parameters[paramName]; exists {
-				// 若存在同名参数，后写覆盖先写；记录 Debug 便于追溯
 				log.Debug("duplicate parameter name detected; overriding previous entry", log.String("param", paramName))
 			}
 			parameters[paramName] = param
@@ -322,13 +239,13 @@ func (s *ResourceService) getParameterConstraints(
 }
 
 // getParametersFromConfigmap 从 configmap 中获取实际设置的 Parameter 并覆盖默认值
-func (s *ResourceService) getParametersFromConfigmap(
+func (s *Service) getParametersFromConfigmap(
 	ctx context.Context,
 	cluster *kbappsv1.Cluster,
 ) (parameters []model.ParameterEntry, err error) {
 
 	// 获取对应数据库类型的适配器
-	a, exists := _clusterRegistry[cluster.Spec.ClusterDef]
+	a, exists := registry.Cluster[cluster.Spec.ClusterDef]
 	if !exists {
 		return nil, fmt.Errorf("unsupported cluster type: %s", cluster.Spec.ClusterDef)
 	}
@@ -371,13 +288,13 @@ func (s *ResourceService) getParametersFromConfigmap(
 
 // determineComponentName 返回要解析的组件名：
 // 优先使用显式传入的 componentName，否则回退到第一个组件；未找到时报错
-func (s *ResourceService) determineComponentName(cluster *kbappsv1.Cluster, componentName ...string) (string, error) {
+func (s *Service) determineComponentName(cluster *kbappsv1.Cluster, componentName ...string) (string, error) {
 	if len(componentName) > 0 && componentName[0] != "" {
 		return componentName[0], nil
 	}
 
 	if len(cluster.Spec.ComponentSpecs) == 0 {
-		return "", ErrTargetNotFound
+		return "", kbkit.ErrTargetNotFound
 	}
 
 	firstCompSpec := cluster.Spec.ComponentSpecs[0]
@@ -389,7 +306,7 @@ func (s *ResourceService) determineComponentName(cluster *kbappsv1.Cluster, comp
 }
 
 // resolveComponentDefinition 根据组件名读取 ComponentDefinition：
-func (s *ResourceService) resolveComponentDefinition(ctx context.Context, cluster *kbappsv1.Cluster, componentName string) (*kbappsv1.ComponentDefinition, error) {
+func (s *Service) resolveComponentDefinition(ctx context.Context, cluster *kbappsv1.Cluster, componentName string) (*kbappsv1.ComponentDefinition, error) {
 	var compSpec *kbappsv1.ClusterComponentSpec
 	for i := range cluster.Spec.ComponentSpecs {
 		if cluster.Spec.ComponentSpecs[i].Name == componentName {
@@ -399,11 +316,11 @@ func (s *ResourceService) resolveComponentDefinition(ctx context.Context, cluste
 	}
 
 	if compSpec == nil {
-		return nil, fmt.Errorf("component %s not found in cluster: %w", componentName, ErrTargetNotFound)
+		return nil, fmt.Errorf("component %s not found in cluster: %w", componentName, kbkit.ErrTargetNotFound)
 	}
 
 	if compSpec.ComponentDef == "" {
-		return nil, fmt.Errorf("component %s has empty ComponentDef: %w", componentName, ErrTargetNotFound)
+		return nil, fmt.Errorf("component %s has empty ComponentDef: %w", componentName, kbkit.ErrTargetNotFound)
 	}
 
 	var compDef kbappsv1.ComponentDefinition
@@ -418,16 +335,16 @@ func (s *ResourceService) resolveComponentDefinition(ctx context.Context, cluste
 // findParamConfigRenderer 查找唯一匹配的 ParamConfigRenderer：
 // 组件名需匹配，ServiceVersion 为空或等于 compDef 的版本;
 // 数量为 0 返回 ErrTargetNotFound，>1 报错
-func (s *ResourceService) findParamConfigRenderer(
+func (s *Service) findParamConfigRenderer(
 	ctx context.Context,
 	compDef *kbappsv1.ComponentDefinition,
-) (*parametersv1alpha1.ParamConfigRenderer, error) {
-	var rendererList parametersv1alpha1.ParamConfigRendererList
+) (*v1alpha1.ParamConfigRenderer, error) {
+	var rendererList v1alpha1.ParamConfigRendererList
 	if err := s.client.List(ctx, &rendererList); err != nil {
 		return nil, fmt.Errorf("list ParamConfigRenderer: %w", err)
 	}
 
-	var matchedRenderers []*parametersv1alpha1.ParamConfigRenderer
+	var matchedRenderers []*v1alpha1.ParamConfigRenderer
 	for i := range rendererList.Items {
 		renderer := &rendererList.Items[i]
 
@@ -447,27 +364,27 @@ func (s *ResourceService) findParamConfigRenderer(
 
 	switch len(matchedRenderers) {
 	case 0:
-		return nil, ErrTargetNotFound
+		return nil, kbkit.ErrTargetNotFound
 	case 1:
 		return matchedRenderers[0], nil
 	default:
-		return nil, ErrMultipleFounded
+		return nil, kbkit.ErrMultipleFounded
 	}
 }
 
 // getParameterDefinitions 按 renderer.Spec.ParametersDefs 批量获取 ParametersDefinition。
-func (s *ResourceService) getParameterDefinitions(
+func (s *Service) getParameterDefinitions(
 	ctx context.Context,
-	renderer *parametersv1alpha1.ParamConfigRenderer,
-) ([]*parametersv1alpha1.ParametersDefinition, error) {
+	renderer *v1alpha1.ParamConfigRenderer,
+) ([]*v1alpha1.ParametersDefinition, error) {
 	if renderer == nil {
 		return nil, nil
 	}
 
 	// 在现行体系下，ParametersDefinition 与 ParamConfigRenderer 是一对一的
-	paramDefs := make([]*parametersv1alpha1.ParametersDefinition, 0, len(renderer.Spec.ParametersDefs))
+	paramDefs := make([]*v1alpha1.ParametersDefinition, 0, len(renderer.Spec.ParametersDefs))
 	for _, paramDefName := range renderer.Spec.ParametersDefs {
-		var paramDef parametersv1alpha1.ParametersDefinition
+		var paramDef v1alpha1.ParametersDefinition
 		key := client.ObjectKey{
 			Name: paramDefName,
 		}
@@ -484,8 +401,8 @@ func (s *ResourceService) getParameterDefinitions(
 
 // processParameterSchema 返回 ParametersDefinition 中的 JSON Schema：
 // 仅处理 schemaInJSON，忽略 CUE, 目前的需求下 ParametersDefinition 都支持 spec.parametersSchema.schemaInJSON。
-func (s *ResourceService) processParameterSchema(
-	spec *parametersv1alpha1.ParametersDefinitionSpec,
+func (s *Service) processParameterSchema(
+	spec *v1alpha1.ParametersDefinitionSpec,
 ) (*apiextensionsv1.JSONSchemaProps, error) {
 	if spec.ParametersSchema == nil {
 		return nil, nil
@@ -501,7 +418,7 @@ func (s *ResourceService) processParameterSchema(
 
 // extractSchemaProperties 从 schema.Properties["spec"] 提取一层参数属性；
 // 跳过 type==object 的容器字段，返回 name->property 映射。
-func (s *ResourceService) extractSchemaProperties(
+func (s *Service) extractSchemaProperties(
 	schema *apiextensionsv1.JSONSchemaProps,
 ) map[string]apiextensionsv1.JSONSchemaProps {
 	if schema == nil {
@@ -534,7 +451,7 @@ func (s *ResourceService) extractSchemaProperties(
 }
 
 // createParameterSets 将 ParametersDefinition 中的参数列表转换为集合。
-func createParameterSets(spec *parametersv1alpha1.ParametersDefinitionSpec) *model.ParameterSets {
+func createParameterSets(spec *v1alpha1.ParametersDefinitionSpec) *model.ParameterSets {
 	if spec == nil {
 		return &model.ParameterSets{}
 	}
@@ -583,13 +500,13 @@ func mergeEntriesAndConstraints(
 }
 
 // isDynamicParameter 判定参数是否为动态：
-func (s *ResourceService) isDynamicParameter(name string, sets *model.ParameterSets) bool {
+func (s *Service) isDynamicParameter(name string, sets *model.ParameterSets) bool {
 	return sets.Dynamic[name]
 }
 
 // buildParameterConstraint 构造参数约束：
 // Type 优先使用 format；填充描述、动态标记、默认值、数值范围与枚举。
-func (s *ResourceService) buildParameterConstraint(name string, property apiextensionsv1.JSONSchemaProps, sets *model.ParameterSets) model.Parameter {
+func (s *Service) buildParameterConstraint(name string, property apiextensionsv1.JSONSchemaProps, sets *model.ParameterSets) model.Parameter {
 	pType := property.Type
 	if strings.TrimSpace(property.Format) != "" {
 		pType = property.Format
@@ -640,19 +557,6 @@ func (s *ResourceService) buildParameterConstraint(name string, property apiexte
 	return parameter
 }
 
-// filterSupportedAddons mono.Filter 的过滤函数
-// 仅返回在 _clusterRegistry 中声明过的数据库类型，确保返回值与系统实际可创建的类型一致。
-// 判定是否受 Block Mechanica 支持时, 不同 toplogy 的 addon 视为同一类型
-func filterSupportedAddons(addon *model.Addon) bool {
-	t := addon.Type
-	// TODO
-	/* if i := strings.LastIndex(t, "-"); i > 0 {
-	    t = t[:i]
-	} */
-	_, ok := _clusterRegistry[t]
-	return ok
-}
-
 // filterParametersByKeyword 对参数列表进行关键词搜索过滤, 匹配参数名称和描述
 func filterParametersByKeyword(parameters []model.Parameter, keyword string) []model.Parameter {
 	if strings.TrimSpace(keyword) == "" {
@@ -687,4 +591,48 @@ func filterOutImmutableParameters(parameters []model.Parameter) []model.Paramete
 		result = append(result, p)
 	}
 	return result
+}
+
+// sliceToSet 将字符串切片转换为集合。
+func sliceToSet(slice []string) map[string]bool {
+	set := make(map[string]bool, len(slice))
+	for _, item := range slice {
+		set[item] = true
+	}
+	return set
+}
+
+// inferParameterType 从参数值推断参数类型
+func inferParameterType(value any) model.ParameterType {
+	if value == nil {
+		return ""
+	}
+
+	switch v := value.(type) {
+	case int, int32, int64, float32, float64:
+		return "integer"
+	case bool:
+		return "boolean"
+	case string:
+		// 尝试解析为数字
+		if strings.Contains(v, ".") {
+			if _, err := strconv.ParseFloat(v, 64); err == nil {
+				return "number"
+			}
+		} else {
+			if _, err := strconv.ParseInt(v, 10, 64); err == nil {
+				return "integer"
+			}
+		}
+
+		// 尝试解析为布尔值
+		if strings.ToUpper(v) == "ON" || strings.ToUpper(v) == "OFF" ||
+			strings.ToLower(v) == "true" || strings.ToLower(v) == "false" {
+			return "boolean"
+		}
+
+		return "string"
+	default:
+		return "string"
+	}
 }

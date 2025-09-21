@@ -42,10 +42,10 @@ type GetClusterEventsRequest struct {
 type RestoreFromBackupRequest struct {
 	model.RBDService
 	NewServiceID string `json:"new_service_id"`
-	BackupName string `json:"backup_name"`
+	BackupName   string `json:"backup_name"`
 }
 
-// 将 ManageClusterLifecycleRequest 的 Operation 转换为 OpsType
+// ManageClusterType 将 ManageClusterLifecycleRequest.Operation 转换为 OpsType
 func (m *ManageClusterLifecycleRequest) ManageClusterType() opsv1alpha1.OpsType {
 	switch strings.TrimSpace(strings.ToLower(m.Operation)) {
 	case "start":

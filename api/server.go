@@ -3,6 +3,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/creasty/defaults"
@@ -15,21 +16,21 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
-// APIServer 将 API 服务封装为 controller-runtime 的 Runnable
-type APIServer struct {
+// Server 将 API 服务封装为 controller-runtime 的 Runnable
+type Server struct {
 	echo    *echo.Echo
 	handler *handler.Handler
 	config  *config.ServerConfig
 }
 
-func NewAPIServer(h *handler.Handler) *APIServer {
+func NewAPIServer(h *handler.Handler) *Server {
 	e := echo.New()
 	cfg := config.MustLoad()
-	return &APIServer{echo: e, handler: h, config: cfg}
+	return &Server{echo: e, handler: h, config: cfg}
 }
 
 // Start 实现 manager.Runnable
-func (r *APIServer) Start(ctx context.Context) error {
+func (r *Server) Start(ctx context.Context) error {
 	if err := StartServerWithConfig(ctx, r.echo, r.handler, r.config); err != nil {
 		return err
 	}
@@ -37,11 +38,11 @@ func (r *APIServer) Start(ctx context.Context) error {
 }
 
 // NeedLeaderElection 实现 manager.LeaderElectionRunnable
-func (r *APIServer) NeedLeaderElection() bool {
+func (r *Server) NeedLeaderElection() bool {
 	return false
 }
 
-// RegisterServer 创建 APIServer 并注册至 manager
+// RegisterServer 创建 Server 并注册至 manager
 func RegisterServer(ctx context.Context, mgr ctrl.Manager, svcs service.Services) error {
 	h := handler.NewHandler(svcs)
 	apiServer := NewAPIServer(h)
@@ -82,7 +83,8 @@ func customErrorHandler() echo.HTTPErrorHandler {
 	return func(err error, c echo.Context) {
 		code := http.StatusInternalServerError
 		msg := "Internal Server Error"
-		if he, ok := err.(*echo.HTTPError); ok {
+		var he *echo.HTTPError
+		if errors.As(err, &he) {
 			code = he.Code
 			if m, ok := he.Message.(string); ok {
 				msg = m

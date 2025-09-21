@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/furutachiKurea/block-mechanica/api/req"
@@ -9,6 +8,7 @@ import (
 	"github.com/furutachiKurea/block-mechanica/internal/log"
 	"github.com/furutachiKurea/block-mechanica/internal/model"
 	"github.com/furutachiKurea/block-mechanica/service"
+
 	"github.com/labstack/echo/v4"
 )
 
@@ -17,7 +17,7 @@ type Handler struct {
 	svc service.Services
 }
 
-// NewHandler
+// NewHandler -
 func NewHandler(svc service.Services) *Handler {
 	return &Handler{svc: svc}
 }
@@ -67,40 +67,40 @@ func (h *Handler) GetBackupRepos(c echo.Context) error {
 func (h *Handler) CreateCluster(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	var req req.ClusterRequest
-	if err := c.Bind(&req); err != nil {
+	var request req.ClusterRequest
+	if err := c.Bind(&request); err != nil {
 		return res.BadRequest(fmt.Errorf("bind request: %w", err))
 	}
 
-	log.Info("CreateCluster", log.Any("req", req))
+	log.Info("CreateCluster", log.Any("request", request))
 
 	modelReq := model.ClusterInput{
 		ClusterInfo: model.ClusterInfo{
-			Name:              req.Name,
-			Namespace:         req.Namespace,
-			Type:              req.Type,
-			Version:           req.Version,
-			StorageClass:      req.StorageClass,
-			TerminationPolicy: req.TerminationPolicy,
+			Name:              request.Name,
+			Namespace:         request.Namespace,
+			Type:              request.Type,
+			Version:           request.Version,
+			StorageClass:      request.StorageClass,
+			TerminationPolicy: request.TerminationPolicy,
 		},
 		ClusterResource: model.ClusterResource{
-			CPU:      req.CPU,
-			Memory:   req.Memory,
-			Storage:  req.Storage,
-			Replicas: req.Replicas,
+			CPU:      request.CPU,
+			Memory:   request.Memory,
+			Storage:  request.Storage,
+			Replicas: request.Replicas,
 		},
 		ClusterBackup: model.ClusterBackup{
-			BackupRepo: req.BackupRepo,
+			BackupRepo: request.BackupRepo,
 			Schedule: model.BackupSchedule{
-				Frequency: model.BackupFrequency(req.Schedule.Frequency),
-				DayOfWeek: req.Schedule.DayOfWeek,
-				Hour:      req.Schedule.Hour,
-				Minute:    req.Schedule.Minute,
+				Frequency: request.Schedule.Frequency,
+				DayOfWeek: request.Schedule.DayOfWeek,
+				Hour:      request.Schedule.Hour,
+				Minute:    request.Schedule.Minute,
 			},
-			RetentionPeriod: req.RetentionPeriod,
+			RetentionPeriod: request.RetentionPeriod,
 		},
 		RBDService: model.RBDService{
-			ServiceID: req.RBDService.ServiceID,
+			ServiceID: request.RBDService.ServiceID,
 		},
 	}
 
@@ -118,13 +118,13 @@ func (h *Handler) CreateCluster(c echo.Context) error {
 func (h *Handler) CancelClusterCreate(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	var req req.ClusterRequest
-	if err := c.Bind(&req); err != nil {
+	var request req.ClusterRequest
+	if err := c.Bind(&request); err != nil {
 		return res.BadRequest(fmt.Errorf("bind request: %w", err))
 	}
 
 	rbdService := model.RBDService{
-		ServiceID: req.RBDService.ServiceID,
+		ServiceID: request.RBDService.ServiceID,
 	}
 
 	if err := h.svc.CancelClusterCreate(ctx, rbdService); err != nil {
@@ -140,12 +140,12 @@ func (h *Handler) CancelClusterCreate(c echo.Context) error {
 func (h *Handler) DeleteCluster(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	var req req.DeleteClustersRequest
-	if err := c.Bind(&req); err != nil {
+	var request req.DeleteClustersRequest
+	if err := c.Bind(&request); err != nil {
 		return res.BadRequest(fmt.Errorf("bind request: %w", err))
 	}
 
-	if err := h.svc.DeleteClusters(ctx, req.ServiceIDs); err != nil {
+	if err := h.svc.DeleteClusters(ctx, request.ServiceIDs); err != nil {
 		return res.InternalError(fmt.Errorf("delete clusters: %w", err))
 	}
 
@@ -158,19 +158,19 @@ func (h *Handler) DeleteCluster(c echo.Context) error {
 func (h *Handler) GetConnectInfo(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	var req req.ClusterRequest
-	if err := c.Bind(&req); err != nil {
+	var request req.ClusterRequest
+	if err := c.Bind(&request); err != nil {
 		return res.BadRequest(fmt.Errorf("bind request: %w", err))
 	}
 
-	connectInfos, err := h.svc.GetConnectInfo(ctx, req.RBDService)
+	connectInfos, err := h.svc.GetConnectInfo(ctx, request.RBDService)
 	if err != nil {
 		return res.InternalError(fmt.Errorf("get connect info: %w", err))
 	}
 
 	response := &res.ConnectInfoRes{
 		ConnectInfos: connectInfos,
-		Port:         h.svc.GetClusterPort(ctx, req.RBDService.ServiceID),
+		Port:         h.svc.GetClusterPort(ctx, request.RBDService.ServiceID),
 	}
 
 	return res.ReturnSuccess(c, response)
@@ -224,18 +224,18 @@ func (h *Handler) GetClusterDetail(c echo.Context) error {
 func (h *Handler) ExpansionCluster(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	var req req.ClusterRequest
-	if err := c.Bind(&req); err != nil {
+	var request req.ClusterRequest
+	if err := c.Bind(&request); err != nil {
 		return res.BadRequest(fmt.Errorf("bind request: %w", err))
 	}
 
 	modelReq := model.ExpansionInput{
-		RBDService: req.RBDService,
+		RBDService: request.RBDService,
 		ClusterResource: model.ClusterResource{
-			CPU:      req.CPU,
-			Memory:   req.Memory,
-			Storage:  req.Storage,
-			Replicas: req.Replicas,
+			CPU:      request.CPU,
+			Memory:   request.Memory,
+			Storage:  request.Storage,
+			Replicas: request.Replicas,
 		},
 	}
 
@@ -252,17 +252,17 @@ func (h *Handler) ExpansionCluster(c echo.Context) error {
 func (h *Handler) ReScheduleBackup(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	var req req.BackupRequest
-	if err := c.Bind(&req); err != nil {
+	var request req.BackupRequest
+	if err := c.Bind(&request); err != nil {
 		return res.BadRequest(fmt.Errorf("bind request: %w", err))
 	}
 
 	schedule := model.BackupScheduleInput{
-		RBDService: req.RBDService,
+		RBDService: request.RBDService,
 		ClusterBackup: model.ClusterBackup{
-			BackupRepo:      req.BackupRepo,
-			Schedule:        req.Schedule,
-			RetentionPeriod: req.RetentionPeriod,
+			BackupRepo:      request.BackupRepo,
+			Schedule:        request.Schedule,
+			RetentionPeriod: request.RetentionPeriod,
 		},
 	}
 
@@ -273,23 +273,23 @@ func (h *Handler) ReScheduleBackup(c echo.Context) error {
 	return res.ReturnSuccess(c, "Done")
 }
 
-// GetBackupList 获取 KubeBlocks 数据库集群的备份列表
+// GetBackups 获取 KubeBlocks 数据库集群的备份列表
 //
 // GET /v1/clusters/:service-id/backups
 func (h *Handler) GetBackups(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	var req model.BackupListQuery
-	if err := c.Bind(&req); err != nil {
+	var query model.BackupListQuery
+	if err := c.Bind(&query); err != nil {
 		return res.BadRequest(fmt.Errorf("bind request: %w", err))
 	}
 
-	result, err := h.svc.ListBackups(ctx, req)
+	result, err := h.svc.ListBackups(ctx, query)
 	if err != nil {
 		return res.InternalError(fmt.Errorf("get backup list: %w", err))
 	}
 
-	return res.ReturnList(c, result.Total, req.Page, result.Items)
+	return res.ReturnList(c, result.Total, query.Page, result.Items)
 }
 
 // CreateBackup 创建 KubeBlocks 数据库集群的备份
@@ -298,13 +298,13 @@ func (h *Handler) GetBackups(c echo.Context) error {
 func (h *Handler) CreateBackup(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	var req req.BackupRequest
-	if err := c.Bind(&req); err != nil {
+	var request req.BackupRequest
+	if err := c.Bind(&request); err != nil {
 		return res.BadRequest(fmt.Errorf("bind request: %w", err))
 	}
 
 	backupInput := model.BackupInput{
-		RBDService: req.RBDService,
+		RBDService: request.RBDService,
 	}
 
 	if err := h.svc.BackupCluster(ctx, backupInput); err != nil {
@@ -320,14 +320,14 @@ func (h *Handler) CreateBackup(c echo.Context) error {
 func (h *Handler) DeleteBackups(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	var req req.DeleteBackupsRequest
-	if err := c.Bind(&req); err != nil {
+	var request req.DeleteBackupsRequest
+	if err := c.Bind(&request); err != nil {
 		return res.BadRequest(fmt.Errorf("bind request: %w", err))
 	}
 
-	log.Info("Wanted to delete backups", log.Any("backups", req.Backups))
+	log.Info("Wanted to delete backups", log.Any("backups", request.Backups))
 
-	deleted, err := h.svc.DeleteBackups(ctx, req.RBDService, req.Backups)
+	deleted, err := h.svc.DeleteBackups(ctx, request.RBDService, request.Backups)
 	if err != nil {
 		return res.InternalError(fmt.Errorf("delete backups: %w", err))
 	}
@@ -340,12 +340,12 @@ func (h *Handler) DeleteBackups(c echo.Context) error {
 func (h *Handler) ManageCluster(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	var req req.ManageClusterLifecycleRequest
-	if err := c.Bind(&req); err != nil {
+	var request req.ManageClusterLifecycleRequest
+	if err := c.Bind(&request); err != nil {
 		return res.BadRequest(fmt.Errorf("bind request: %w", err))
 	}
 
-	result := h.svc.ManageClustersLifecycle(ctx, req.ManageClusterType(), req.ServiceIDs)
+	result := h.svc.ManageClustersLifecycle(ctx, request.ManageClusterType(), request.ServiceIDs)
 	if len(result.Succeeded) == 0 {
 		return res.InternalError(res.NewBatchOperationError("manage clusters", result.Failed))
 	}
@@ -356,13 +356,13 @@ func (h *Handler) ManageCluster(c echo.Context) error {
 func (h *Handler) GetPodDetail(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	var req req.GetPodDetailRequest
-	log.Debug("GetPodDetail", log.Any("req", req))
-	if err := c.Bind(&req); err != nil {
+	var request req.GetPodDetailRequest
+	log.Debug("GetPodDetail", log.Any("request", request))
+	if err := c.Bind(&request); err != nil {
 		return res.BadRequest(fmt.Errorf("bind request: %w", err))
 	}
 
-	podDetail, err := h.svc.GetPodDetail(ctx, req.ServiceID, req.PodName)
+	podDetail, err := h.svc.GetPodDetail(ctx, request.ServiceID, request.PodName)
 	if err != nil {
 		return res.InternalError(fmt.Errorf("get pod detail: %w", err))
 	}
@@ -373,17 +373,17 @@ func (h *Handler) GetPodDetail(c echo.Context) error {
 func (h *Handler) GetClusterEvents(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	var req req.GetClusterEventsRequest
-	if err := c.Bind(&req); err != nil {
+	var request req.GetClusterEventsRequest
+	if err := c.Bind(&request); err != nil {
 		return res.BadRequest(fmt.Errorf("bind request: %w", err))
 	}
 
-	result, err := h.svc.GetClusterEvents(ctx, req.ServiceID, req.Pagination)
+	result, err := h.svc.GetClusterEvents(ctx, request.ServiceID, request.Pagination)
 	if err != nil {
 		return res.InternalError(fmt.Errorf("get cluster events: %w", err))
 	}
 
-	return res.ReturnList(c, result.Total, req.Page, result.Items)
+	return res.ReturnList(c, result.Total, request.Page, result.Items)
 }
 
 // GetClusterParameters 返回 service-id 对应的 KubeBlocks Cluster 的参数设置,
@@ -394,20 +394,17 @@ func (h *Handler) GetClusterEvents(c echo.Context) error {
 func (h *Handler) GetClusterParameters(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	var req model.ClusterParametersQuery
-	if err := c.Bind(&req); err != nil {
+	var query model.ClusterParametersQuery
+	if err := c.Bind(&query); err != nil {
 		return res.BadRequest(fmt.Errorf("bind request: %w", err))
 	}
 
-	result, err := h.svc.GetClusterParameter(ctx, req)
-	if err != nil && errors.Is(err, service.ErrTargetNotFound) {
-		log.Info("cluster does not support parameters", log.String("serviceID", req.ServiceID))
-		return res.ReturnList(c, 0, req.Page, []model.Parameter{})
-	} else if err != nil {
+	result, err := h.svc.GetClusterParameter(ctx, query)
+	if err != nil {
 		return res.InternalError(fmt.Errorf("get cluster parameters: %w", err))
 	}
 
-	return res.ReturnList(c, result.Total, req.Page, result.Items)
+	return res.ReturnList(c, result.Total, query.Page, result.Items)
 }
 
 // ChangeClusterParameter 变更 KubeBlocks 数据库集群的参数配置
@@ -417,20 +414,20 @@ func (h *Handler) GetClusterParameters(c echo.Context) error {
 func (h *Handler) ChangeClusterParameter(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	var req model.ClusterParametersChange
-	if err := c.Bind(&req); err != nil {
+	var change model.ClusterParametersChange
+	if err := c.Bind(&change); err != nil {
 		return res.BadRequest(fmt.Errorf("bind request: %w", err))
 	}
 
-	log.Debug("ChangeClusterParameter", log.Any("req", req))
+	log.Debug("ChangeClusterParameter", log.Any("change", change))
 
-	result, err := h.svc.ChangeClusterParameter(ctx, req)
+	result, err := h.svc.ChangeClusterParameter(ctx, change)
 	if err != nil {
 		return res.InternalError(fmt.Errorf("change cluster parameters: %w", err))
 	}
 
 	log.Debug("parameter change response",
-		log.String("serviceID", req.ServiceID),
+		log.String("serviceID", change.ServiceID),
 		log.Any("appliedCount", result.Applied),
 		log.Any("invalidCount", result.Invalids),
 	)
@@ -441,12 +438,12 @@ func (h *Handler) ChangeClusterParameter(c echo.Context) error {
 func (h *Handler) RestoreClusterFromBackup(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	var req req.RestoreFromBackupRequest
-	if err := c.Bind(&req); err != nil {
+	var request req.RestoreFromBackupRequest
+	if err := c.Bind(&request); err != nil {
 		return res.BadRequest(fmt.Errorf("bind request: %w", err))
 	}
 
-	restoredCluster, err := h.svc.RestoreFromBackup(ctx, req.ServiceID, req.NewServiceID, req.BackupName)
+	restoredCluster, err := h.svc.RestoreFromBackup(ctx, request.ServiceID, request.NewServiceID, request.BackupName)
 	if err != nil {
 		return res.InternalError(fmt.Errorf("restore cluster from backup: %w", err))
 	}

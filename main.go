@@ -7,8 +7,8 @@ import (
 	"syscall"
 
 	"github.com/furutachiKurea/block-mechanica/internal/config"
+	"github.com/furutachiKurea/block-mechanica/internal/k8s"
 	"github.com/furutachiKurea/block-mechanica/internal/log"
-	"github.com/furutachiKurea/block-mechanica/k8s"
 	"github.com/furutachiKurea/block-mechanica/service"
 )
 

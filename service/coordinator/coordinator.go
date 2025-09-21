@@ -78,7 +78,7 @@ func convParameterValue(value string) any {
 
 	// 处理带单位的值，应当原样返回
 	if len(trimmed) > 1 {
-		lastChar := strings.ToUpper(string(trimmed[len(trimmed)-1:]))
+		lastChar := strings.ToUpper(trimmed[len(trimmed)-1:])
 		if lastChar == "K" || lastChar == "M" || lastChar == "G" || lastChar == "T" {
 			numPart := trimmed[:len(trimmed)-1]
 			if _, err := strconv.ParseFloat(numPart, 64); err == nil {
@@ -90,7 +90,7 @@ func convParameterValue(value string) any {
 	// 处理时间单位，应当原样返回
 	if len(trimmed) > 1 {
 		lastTwo := strings.ToLower(trimmed[len(trimmed)-2:])
-		lastOne := strings.ToLower(string(trimmed[len(trimmed)-1:]))
+		lastOne := strings.ToLower(trimmed[len(trimmed)-1:])
 		if lastTwo == "ms" || lastTwo == "us" || lastOne == "s" || lastOne == "m" || lastOne == "h" {
 			return trimmed
 		}

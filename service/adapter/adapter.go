@@ -2,13 +2,11 @@
 package adapter
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
 	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
 	"github.com/furutachiKurea/block-mechanica/internal/model"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var (
@@ -18,10 +16,7 @@ var (
 // ClusterBuilder 用于在 Rainbond 中 KubeBlocks Cluster 的创建
 type ClusterBuilder interface {
 	// BuildCluster 构建 Cluster struct
-	BuildCluster(ctx context.Context, req model.ClusterInput) (*kbappsv1.Cluster, error)
-
-	// AssociateToKubeBlocksComponent 将 KubeBlocks 组件和 Cluster 通过 service_id 关联
-	AssociateToKubeBlocksComponent(ctx context.Context, c client.Client, req model.ClusterInput) error
+	BuildCluster(input model.ClusterInput) (*kbappsv1.Cluster, error)
 }
 
 // Coordinator 用于协调 KubeBlocks 和 Rainbond
@@ -64,7 +59,7 @@ func (ca *ClusterAdapter) Validate() error {
 	}
 
 	if ca.Coordinator == nil {
-		return fmt.Errorf("Coordinator: %w", ErrAdapterNotImplemented)
+		return fmt.Errorf("coordinator: %w", ErrAdapterNotImplemented)
 	}
 
 	return nil

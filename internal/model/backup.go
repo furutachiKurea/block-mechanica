@@ -29,3 +29,10 @@ type BackupItem struct {
 	Status datav1alpha1.BackupPhase `json:"status"`
 	Time   time.Time                `json:"time"`
 }
+
+type BackupRepo struct {
+	Name         string                       `json:"name"`
+	Type         string                       `json:"type"`
+	AccessMethod datav1alpha1.AccessMethod    `json:"accessMethod"`
+	Phase        datav1alpha1.BackupRepoPhase `json:"phase"`
+}

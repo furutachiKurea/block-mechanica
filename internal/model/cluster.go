@@ -70,7 +70,7 @@ type ClusterResource struct {
 	Replicas int32  `json:"replicas"`
 }
 
-// BackupSchedule
+// BackupSchedule backup schedule 配置
 type BackupSchedule struct {
 	Frequency BackupFrequency `json:"frequency"`
 	DayOfWeek int32           `json:"dayOfWeek"`
@@ -279,41 +279,45 @@ func (result *BatchOperationResult) AddFailed(serviceID string, err error) {
 	result.Failed[serviceID] = err
 }
 
-/*
-	"bean": {
-	       "name": "pod-xxx-abcdef",
-	       "node_ip": "10.0.0.1",
-	       "start_time": "2023-07-20T08:21:00Z",
-	       "ip": "172.20.0.2",
-	       "version": "v1.2.3",
-	       "namespace": "default",
-	       "status": {
-	         "type_str": "running",
-	         "reason": "ContainersNotReady",
-	         "message": "Waiting for container to start",
-	         "advice": "OutOfMemory"
-	       },
-	       "containers": [
-	         {
-		   	   "component_def": "postgresql-12-1.0.0", // 来自 cluster 而不是从 pod 获取
-	           "limit_memory": "512Mi",
-	           "limit_cpu": "0.5",
-	           "started": "2023-07-20T08:22:00Z",
-	           "state": "Running",
-	           "reason": ""
-	         }
-	       ],
-	       "events": [
-	         {
-	           "type": "Normal",
-	           "reason": "Pulled",
-	           "age": "5m",
-	           "message": "Successfully pulled image"
-	         }
-	       ]
-	     }
-	   }
-*/
+// PodDetail 用于适配 Rainbond 中的 Instance
+//
+// 形如：
+//
+//	"bean": {
+//	       "name": "pod-xxx-abcdef",
+//	       "node_ip": "10.0.0.1",
+//	       "start_time": "2023-07-20T08:21:00Z",
+//	       "ip": "172.20.0.2",
+//	       "version": "v1.2.3",
+//
+//	      "namespace": "default",
+//
+//	      "status": {
+//	        "type_str": "running",
+//	        "reason": "ContainersNotReady",
+//	        "message": "Waiting for container to start",
+//	        "advice": "OutOfMemory"
+//	      },
+//	      "containers": [
+//	        {
+//		   	   "component_def": "postgresql-12-1.0.0", // 来自 cluster 而不是从 pod 获取
+//	          "limit_memory": "512Mi",
+//	          "limit_cpu": "0.5",
+//	          "started": "2023-07-20T08:22:00Z",
+//	          "state": "Running",
+//	          "reason": ""
+//	        }
+//	      ],
+//	      "events": [
+//	        {
+//	          "type": "Normal",
+//	          "reason": "Pulled",
+//	          "age": "5m",
+//	          "message": "Successfully pulled image"
+//	        }
+//	      ]
+//	    }
+//	  }
 type PodDetail struct {
 	Name       string      `json:"name"`
 	NodeIP     string      `json:"node_ip"`
@@ -323,9 +327,10 @@ type PodDetail struct {
 	Namespace  string      `json:"namespace"`
 	Status     PodStatus   `json:"status"`
 	Containers []Container `json:"containers"`
-	Events     []Event     `json:"events"`
+	Events     []PodEvent  `json:"events"`
 }
 
+// PodStatus 当前 Pod 的状态
 type PodStatus struct {
 	TypeStr string `json:"type_str"`
 	Reason  string `json:"reason"`
@@ -333,6 +338,7 @@ type PodStatus struct {
 	Advice  string `json:"advice"`
 }
 
+// Container Pod 中的 Container 信息
 type Container struct {
 	ComponentDef string `json:"component_def"`
 	LimitMemory  string `json:"limit_memory"`
@@ -342,23 +348,15 @@ type Container struct {
 	Reason       string `json:"reason"`
 }
 
-type Event struct {
+// PodEvent Pod 中的 Event 信息
+type PodEvent struct {
 	Type    string `json:"type"`
 	Reason  string `json:"reason"`
 	Age     string `json:"age"`
 	Message string `json:"message"`
 }
 
-/*
-"event_id": "kb-2e9f3c1d-20240901T102355Z-0001",
-"opt_type": "create-cluster",
-"status": "success",
-"final_status": "complete",
-"message": "Cluster created successfully",
-"reason": "",
-"create_time": "2024-09-01T10:23:55Z",
-"end_time": "2024-09-01T10:24:21Z"
-*/
+// EventItem 用于适配 Rainbond 的操作记录
 type EventItem struct {
 	OpsName     string `json:"event_id"`
 	OpsType     string `json:"opt_type"`

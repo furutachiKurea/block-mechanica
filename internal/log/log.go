@@ -67,31 +67,31 @@ func getLogLevel(development bool) zapcore.Level {
 
 // createConsoleEncoder 创建控制台编码器
 func createConsoleEncoder(development bool) zapcore.Encoder {
-	config := zap.NewDevelopmentEncoderConfig()
+	encoderConfig := zap.NewDevelopmentEncoderConfig()
 	if development {
-		config.EncodeLevel = zapcore.CapitalColorLevelEncoder
+		encoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 	} else {
-		config = zap.NewProductionEncoderConfig()
+		encoderConfig = zap.NewProductionEncoderConfig()
 	}
-	config.EncodeCaller = zapcore.ShortCallerEncoder
-	return zapcore.NewConsoleEncoder(config)
+	encoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
+	return zapcore.NewConsoleEncoder(encoderConfig)
 }
 
 // createFileEncoder 创建文件编码器
 func createFileEncoder(development bool) zapcore.Encoder {
 	if development {
 		// 开发环境，去除颜色
-		config := zap.NewDevelopmentEncoderConfig()
-		config.EncodeLevel = zapcore.CapitalLevelEncoder
-		config.EncodeCaller = zapcore.ShortCallerEncoder
-		config.EncodeTime = zapcore.ISO8601TimeEncoder
-		return zapcore.NewConsoleEncoder(config)
+		encoderConfig := zap.NewDevelopmentEncoderConfig()
+		encoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
+		encoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
+		encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+		return zapcore.NewConsoleEncoder(encoderConfig)
 	} else {
 		// 生产环境：使用 JSON 格式
-		config := zap.NewProductionEncoderConfig()
-		config.EncodeCaller = zapcore.ShortCallerEncoder
-		config.EncodeTime = zapcore.ISO8601TimeEncoder
-		return zapcore.NewJSONEncoder(config)
+		encoderConfig := zap.NewProductionEncoderConfig()
+		encoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
+		encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+		return zapcore.NewJSONEncoder(encoderConfig)
 	}
 }
 

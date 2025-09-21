@@ -40,7 +40,7 @@ func (e *errorClient) List(ctx context.Context, list client.ObjectList, opts ...
 	return errors.New("list failed")
 }
 
-// NewFakeClient
+// NewFakeClient -
 func NewFakeClient(objs ...client.Object) client.Client {
 	return fake.NewClientBuilder().
 		WithScheme(_scheme).
@@ -48,7 +48,7 @@ func NewFakeClient(objs ...client.Object) client.Client {
 		Build()
 }
 
-// NewErrorClient
+// NewErrorClient -
 func NewErrorClient() client.Client {
 	return &errorClient{}
 }

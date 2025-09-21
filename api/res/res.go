@@ -28,7 +28,7 @@ type Response struct {
 	Page          int `json:"page,omitempty"`
 }
 
-// ReturnSuccess
+// ReturnSuccess -
 func ReturnSuccess(c echo.Context, data any) error {
 	if data == nil {
 		return c.JSON(http.StatusOK, Response{Bean: nil})

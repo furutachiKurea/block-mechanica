@@ -1,4 +1,4 @@
-package service
+package kbkit
 
 import (
 	"context"
@@ -7,13 +7,14 @@ import (
 	"strings"
 	"time"
 
-	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
-	opv1alpha1 "github.com/apecloud/kubeblocks/apis/operations/v1alpha1"
-	"github.com/apecloud/kubeblocks/pkg/constant"
 	"github.com/furutachiKurea/block-mechanica/internal/index"
 	"github.com/furutachiKurea/block-mechanica/internal/model"
+
+	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
+	opsv1alpha1 "github.com/apecloud/kubeblocks/apis/operations/v1alpha1"
+	"github.com/apecloud/kubeblocks/pkg/constant"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -24,7 +25,7 @@ var (
 	opsLifeAfterUnsuccess int32 = 1 * 60 * 60
 	opsLifeAfterSucceed   int32 = 24 * 60 * 60
 
-	defaultBackupDeletionPolicy string = "Delete"
+	defaultBackupDeletionPolicy = "Delete"
 )
 
 const (
@@ -41,16 +42,16 @@ type preflightResult struct {
 // preflight 规定 OpsRequest 创建前/后的决策逻辑
 type preflight interface {
 	// decide 根据创建目标判断是否允许创建
-	decide(ctx context.Context, c client.Client, ops *opv1alpha1.OpsRequest) (preflightResult, error)
+	decide(ctx context.Context, c client.Client, ops *opsv1alpha1.OpsRequest) (preflightResult, error)
 }
 
 // uniqueOps 检查是否存在处在非终态的同类型同目标的 OpsRequest，
 type uniqueOps struct{}
 
-func (uniqueOps) decide(ctx context.Context, c client.Client, ops *opv1alpha1.OpsRequest) (preflightResult, error) {
+func (uniqueOps) decide(ctx context.Context, c client.Client, ops *opsv1alpha1.OpsRequest) (preflightResult, error) {
 	opsList, err := getOpsRequestsByIndex(ctx, c, ops.Namespace, ops.Spec.ClusterName, ops.Spec.Type)
 	if err != nil {
-		if !apierrors.IsNotFound(err) {
+		if !errors.IsNotFound(err) {
 			return preflightResult{}, fmt.Errorf("list opsrequests for preflight: %w", err)
 		}
 		return preflightResult{Decision: preflightProceed}, nil
@@ -76,17 +77,17 @@ func withPreflight(p preflight) createOption {
 	return func(o *createOpts) { o.preflight = p }
 }
 
-// createLifecycleOpsRequest 创建生命周期管理相关的 OpsRequest，供 Reconciler 使用
-func createLifecycleOpsRequest(ctx context.Context,
+// CreateLifecycleOpsRequest 创建生命周期管理相关的 OpsRequest，供 Reconciler 使用
+func CreateLifecycleOpsRequest(ctx context.Context,
 	c client.Client,
 	cluster *kbappsv1.Cluster,
-	opsType opv1alpha1.OpsType,
+	opsType opsv1alpha1.OpsType,
 ) error {
-	opsSpecific := opv1alpha1.SpecificOpsRequest{}
-	if opsType == opv1alpha1.RestartType {
-		opsSpecific.RestartList = []opv1alpha1.ComponentOps{
+	opsSpecific := opsv1alpha1.SpecificOpsRequest{}
+	if opsType == opsv1alpha1.RestartType {
+		opsSpecific.RestartList = []opsv1alpha1.ComponentOps{
 			{
-				ComponentName: clusterType(cluster),
+				ComponentName: ClusterType(cluster),
 			},
 		}
 	}
@@ -98,42 +99,42 @@ func createLifecycleOpsRequest(ctx context.Context,
 	return nil
 }
 
-// createBackupOpsRequest 为指定的 Cluster 创建备份 OpsRequest
+// CreateBackupOpsRequest 为指定的 Cluster 创建备份 OpsRequest
 //
 // backupMethod 为备份方法，取决于数据库类型
-func createBackupOpsRequest(ctx context.Context,
+func CreateBackupOpsRequest(ctx context.Context,
 	c client.Client,
 	cluster *kbappsv1.Cluster,
 	backupMethod string,
 ) error {
 
-	specificOps := opv1alpha1.SpecificOpsRequest{
-		Backup: &opv1alpha1.Backup{
-			BackupPolicyName: fmt.Sprintf("%s-%s-backup-policy", cluster.Name, clusterType(cluster)),
+	specificOps := opsv1alpha1.SpecificOpsRequest{
+		Backup: &opsv1alpha1.Backup{
+			BackupPolicyName: fmt.Sprintf("%s-%s-backup-policy", cluster.Name, ClusterType(cluster)),
 			BackupMethod:     backupMethod,
 			DeletionPolicy:   defaultBackupDeletionPolicy,
 		},
 	}
 
-	_, err := createOpsRequest(ctx, c, cluster, opv1alpha1.BackupType, specificOps)
+	_, err := createOpsRequest(ctx, c, cluster, opsv1alpha1.BackupType, specificOps)
 	return err
 }
 
-// createHorizontalScalingOpsRequest 为指定的 Cluster 创建水平伸缩 OpsRequest
-func createHorizontalScalingOpsRequest(ctx context.Context,
+// CreateHorizontalScalingOpsRequest 为指定的 Cluster 创建水平伸缩 OpsRequest
+func CreateHorizontalScalingOpsRequest(ctx context.Context,
 	c client.Client,
 	params model.HorizontalScalingOpsParams,
 ) error {
-	var specificOps opv1alpha1.SpecificOpsRequest
+	var specificOps opsv1alpha1.SpecificOpsRequest
 
 	if params.DeltaReplicas > 0 {
 		// ScaleOut
-		specificOps = opv1alpha1.SpecificOpsRequest{
-			HorizontalScalingList: []opv1alpha1.HorizontalScaling{
+		specificOps = opsv1alpha1.SpecificOpsRequest{
+			HorizontalScalingList: []opsv1alpha1.HorizontalScaling{
 				{
-					ComponentOps: opv1alpha1.ComponentOps{ComponentName: params.ComponentName},
-					ScaleOut: &opv1alpha1.ScaleOut{
-						ReplicaChanger: opv1alpha1.ReplicaChanger{ReplicaChanges: &params.DeltaReplicas},
+					ComponentOps: opsv1alpha1.ComponentOps{ComponentName: params.ComponentName},
+					ScaleOut: &opsv1alpha1.ScaleOut{
+						ReplicaChanger: opsv1alpha1.ReplicaChanger{ReplicaChanges: &params.DeltaReplicas},
 					},
 				},
 			},
@@ -141,31 +142,31 @@ func createHorizontalScalingOpsRequest(ctx context.Context,
 	} else {
 		// ScaleIn
 		absReplicas := -params.DeltaReplicas
-		specificOps = opv1alpha1.SpecificOpsRequest{
-			HorizontalScalingList: []opv1alpha1.HorizontalScaling{
+		specificOps = opsv1alpha1.SpecificOpsRequest{
+			HorizontalScalingList: []opsv1alpha1.HorizontalScaling{
 				{
-					ComponentOps: opv1alpha1.ComponentOps{ComponentName: params.ComponentName},
-					ScaleIn: &opv1alpha1.ScaleIn{
-						ReplicaChanger: opv1alpha1.ReplicaChanger{ReplicaChanges: &absReplicas},
+					ComponentOps: opsv1alpha1.ComponentOps{ComponentName: params.ComponentName},
+					ScaleIn: &opsv1alpha1.ScaleIn{
+						ReplicaChanger: opsv1alpha1.ReplicaChanger{ReplicaChanges: &absReplicas},
 					},
 				},
 			},
 		}
 	}
 
-	_, err := createOpsRequest(ctx, c, params.Cluster, opv1alpha1.HorizontalScalingType, specificOps)
+	_, err := createOpsRequest(ctx, c, params.Cluster, opsv1alpha1.HorizontalScalingType, specificOps)
 	return err
 }
 
-// createVerticalScalingOpsRequest 为指定的 Cluster 创建垂直伸缩 OpsRequest
-func createVerticalScalingOpsRequest(ctx context.Context,
+// CreateVerticalScalingOpsRequest 为指定的 Cluster 创建垂直伸缩 OpsRequest
+func CreateVerticalScalingOpsRequest(ctx context.Context,
 	c client.Client,
 	params model.VerticalScalingOpsParams,
 ) error {
-	specificOps := opv1alpha1.SpecificOpsRequest{
-		VerticalScalingList: []opv1alpha1.VerticalScaling{
+	specificOps := opsv1alpha1.SpecificOpsRequest{
+		VerticalScalingList: []opsv1alpha1.VerticalScaling{
 			{
-				ComponentOps: opv1alpha1.ComponentOps{ComponentName: params.ComponentName},
+				ComponentOps: opsv1alpha1.ComponentOps{ComponentName: params.ComponentName},
 				ResourceRequirements: corev1.ResourceRequirements{
 					Limits: corev1.ResourceList{
 						corev1.ResourceCPU:    params.CPU,
@@ -180,20 +181,20 @@ func createVerticalScalingOpsRequest(ctx context.Context,
 		},
 	}
 
-	_, err := createOpsRequest(ctx, c, params.Cluster, opv1alpha1.VerticalScalingType, specificOps)
+	_, err := createOpsRequest(ctx, c, params.Cluster, opsv1alpha1.VerticalScalingType, specificOps)
 	return err
 }
 
-// createVolumeExpansionOpsRequest 为指定的 Cluster 创建存储扩容 OpsRequest
-func createVolumeExpansionOpsRequest(ctx context.Context,
+// CreateVolumeExpansionOpsRequest 为指定的 Cluster 创建存储扩容 OpsRequest
+func CreateVolumeExpansionOpsRequest(ctx context.Context,
 	c client.Client,
 	params model.VolumeExpansionOpsParams,
 ) error {
-	specificOps := opv1alpha1.SpecificOpsRequest{
-		VolumeExpansionList: []opv1alpha1.VolumeExpansion{
+	specificOps := opsv1alpha1.SpecificOpsRequest{
+		VolumeExpansionList: []opsv1alpha1.VolumeExpansion{
 			{
-				ComponentOps: opv1alpha1.ComponentOps{ComponentName: params.ComponentName},
-				VolumeClaimTemplates: []opv1alpha1.OpsRequestVolumeClaimTemplate{
+				ComponentOps: opsv1alpha1.ComponentOps{ComponentName: params.ComponentName},
+				VolumeClaimTemplates: []opsv1alpha1.OpsRequestVolumeClaimTemplate{
 					{
 						Name:    params.VolumeClaimTemplateName,
 						Storage: params.Storage,
@@ -203,28 +204,28 @@ func createVolumeExpansionOpsRequest(ctx context.Context,
 		},
 	}
 
-	_, err := createOpsRequest(ctx, c, params.Cluster, opv1alpha1.VolumeExpansionType, specificOps)
+	_, err := createOpsRequest(ctx, c, params.Cluster, opsv1alpha1.VolumeExpansionType, specificOps)
 	return err
 }
 
-// createParameterChangeOpsRequest 创建参数变更 OpsRequest
-func createParameterChangeOpsRequest(ctx context.Context,
+// CreateParameterChangeOpsRequest 创建参数变更 OpsRequest
+func CreateParameterChangeOpsRequest(ctx context.Context,
 	c client.Client,
 	cluster *kbappsv1.Cluster,
 	parameters []model.ParameterEntry,
 ) error {
-	specificOps := opv1alpha1.SpecificOpsRequest{
-		Reconfigures: []opv1alpha1.Reconfigure{
+	specificOps := opsv1alpha1.SpecificOpsRequest{
+		Reconfigures: []opsv1alpha1.Reconfigure{
 			{
-				ComponentOps: opv1alpha1.ComponentOps{ComponentName: clusterType(cluster)},
+				ComponentOps: opsv1alpha1.ComponentOps{ComponentName: ClusterType(cluster)},
 			},
 		},
 	}
 
-	var parameterPairs []opv1alpha1.ParameterPair
+	var parameterPairs []opsv1alpha1.ParameterPair
 	for _, parameter := range parameters {
 		if strValue, ok := parameter.Value.(*string); ok {
-			parameterPairs = append(parameterPairs, opv1alpha1.ParameterPair{
+			parameterPairs = append(parameterPairs, opsv1alpha1.ParameterPair{
 				Key:   parameter.Name,
 				Value: strValue,
 			})
@@ -233,49 +234,49 @@ func createParameterChangeOpsRequest(ctx context.Context,
 
 	specificOps.Reconfigures[0].Parameters = parameterPairs
 
-	_, err := createOpsRequest(ctx, c, cluster, opv1alpha1.ReconfiguringType, specificOps)
+	_, err := createOpsRequest(ctx, c, cluster, opsv1alpha1.ReconfiguringType, specificOps)
 	return err
 }
 
-// createRestoreOpsRequest 使用 backupName 指定一个 backup 创建 Restore OpsRequest，从备份中恢复 cluster
+// CreateRestoreOpsRequest 使用 backupName 指定一个 backup 创建 Restore OpsRequest，从备份中恢复 cluster
 //
 // 通过 backup 恢复的 Cluster 的名称格式为 {cluster.Name(去除四位后缀)}-restore-{四位随机后缀},
 // 串行恢复卷声明，在集群进行 running 状态后执行 PostReady
-func createRestoreOpsRequest(ctx context.Context,
+func CreateRestoreOpsRequest(ctx context.Context,
 	c client.Client,
 	cluster *kbappsv1.Cluster,
 	backupName string,
-) (*opv1alpha1.OpsRequest, error) {
-	specificOps := opv1alpha1.SpecificOpsRequest{
-		Restore: &opv1alpha1.Restore{
+) (*opsv1alpha1.OpsRequest, error) {
+	specificOps := opsv1alpha1.SpecificOpsRequest{
+		Restore: &opsv1alpha1.Restore{
 			BackupName:                        backupName,
 			VolumeRestorePolicy:               "Serial",
 			DeferPostReadyUntilClusterRunning: true,
 		},
 	}
 
-	return createOpsRequest(ctx, c, cluster, opv1alpha1.RestoreType, specificOps)
+	return createOpsRequest(ctx, c, cluster, opsv1alpha1.RestoreType, specificOps)
 }
 
 // createOpsRequest 创建 OpsRequest
 //
-// OpsRequest 的名称格式为 {clustername}-{opsType}-ops-{timestamp}，
+// OpsRequest 的名称格式为 {clustername}-{opsType}-{timestamp}，
 // 使用时间戳确保每次操作都有唯一的名称
 func createOpsRequest(
 	ctx context.Context,
 	c client.Client,
 	cluster *kbappsv1.Cluster,
-	opsType opv1alpha1.OpsType,
-	specificOps opv1alpha1.SpecificOpsRequest,
+	opsType opsv1alpha1.OpsType,
+	specificOps opsv1alpha1.SpecificOpsRequest,
 	opts ...createOption,
-) (*opv1alpha1.OpsRequest, error) {
+) (*opsv1alpha1.OpsRequest, error) {
 	options := applyCreateOptions(opts...)
 
 	ops := buildOpsRequest(cluster, opsType, specificOps)
 
 	res, err := options.preflight.decide(ctx, c, ops)
 	if err != nil {
-		return nil, fmt.Errorf("preflight check for ops %s failed: %w", ops.Name, err)
+		return nil, fmt.Errorf("preflight check for opsruqest %s failed: %w", ops.Name, err)
 	}
 
 	if res.Decision == preflightSkip {
@@ -283,7 +284,7 @@ func createOpsRequest(
 	}
 
 	if err := c.Create(ctx, ops); err != nil {
-		if apierrors.IsAlreadyExists(err) {
+		if errors.IsAlreadyExists(err) {
 			return nil, ErrCreateOpsSkipped
 		}
 		return nil, fmt.Errorf("create opsrequest %s: %w", ops.Name, err)
@@ -295,9 +296,9 @@ func createOpsRequest(
 // buildOpsRequest 构造 OpsRequest 对象
 func buildOpsRequest(
 	cluster *kbappsv1.Cluster,
-	opsType opv1alpha1.OpsType,
-	specificOps opv1alpha1.SpecificOpsRequest,
-) *opv1alpha1.OpsRequest {
+	opsType opsv1alpha1.OpsType,
+	specificOps opsv1alpha1.SpecificOpsRequest,
+) *opsv1alpha1.OpsRequest {
 	name := makeOpsRequestName(cluster.Name, opsType)
 
 	serviceID := cluster.GetLabels()[index.ServiceIDLabel]
@@ -308,13 +309,13 @@ func buildOpsRequest(
 		index.ServiceIDLabel:            serviceID,
 	}
 
-	ops := &opv1alpha1.OpsRequest{
+	ops := &opsv1alpha1.OpsRequest{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: cluster.Namespace,
 			Labels:    labels,
 		},
-		Spec: opv1alpha1.OpsRequestSpec{
+		Spec: opsv1alpha1.OpsRequestSpec{
 			ClusterName:                           cluster.Name,
 			Type:                                  opsType,
 			TimeoutSeconds:                        &opsTimeoutSecond,
@@ -327,7 +328,7 @@ func buildOpsRequest(
 
 	// 依据 opsType 设置不同的 spec 字段
 	switch opsType {
-	case opv1alpha1.RestoreType:
+	case opsv1alpha1.RestoreType:
 		// Restore 中 ClusterName 为通过备份恢复的 Cluster 的名称，会创建一个新的 Cluster，
 		// 应当按照 {cluster.Name(去除后缀)}-restore-{四位随机后缀}" 的格式
 		ops.Spec.ClusterName = generateRestoredClusterName(cluster.Name)
@@ -354,15 +355,15 @@ func applyDefaultCreateOptions(o *createOpts) {
 }
 
 // makeOpsRequestName 生成 OpsRequest 名称
-// 格式：{clustername}-{opsType}-ops-{timestamp}
-func makeOpsRequestName(clusterName string, opsType opv1alpha1.OpsType) string {
+// 格式：{clustername}-{opsType}-{timestamp}
+func makeOpsRequestName(clusterName string, opsType opsv1alpha1.OpsType) string {
 	timestamp := time.Now().UnixNano()
-	return fmt.Sprintf("%s-%s-ops-%x", clusterName, strings.ToLower(string(opsType)), timestamp)
+	return fmt.Sprintf("%s-%s-%x", clusterName, strings.ToLower(string(opsType)), timestamp)
 }
 
 // getOpsRequestsByIndex 使用索引查询 OpsRequest，失败时回退到标签查询
-func getOpsRequestsByIndex(ctx context.Context, c client.Client, namespace, clusterName string, opsType opv1alpha1.OpsType) ([]opv1alpha1.OpsRequest, error) {
-	var list opv1alpha1.OpsRequestList
+func getOpsRequestsByIndex(ctx context.Context, c client.Client, namespace, clusterName string, opsType opsv1alpha1.OpsType) ([]opsv1alpha1.OpsRequest, error) {
+	var list opsv1alpha1.OpsRequestList
 
 	indexKey := fmt.Sprintf("%s/%s/%s", namespace, clusterName, opsType)
 	if err := c.List(ctx, &list, client.MatchingFields{index.NamespaceClusterOpsTypeField: indexKey}); err == nil {
@@ -383,12 +384,12 @@ func getOpsRequestsByIndex(ctx context.Context, c client.Client, namespace, clus
 }
 
 // isOpsRequestInFinalPhase 检查操作请求是否处于终态
-func isOpsRequestInFinalPhase(ops *opv1alpha1.OpsRequest) bool {
+func isOpsRequestInFinalPhase(ops *opsv1alpha1.OpsRequest) bool {
 	phase := ops.Status.Phase
-	return phase == opv1alpha1.OpsSucceedPhase ||
-		phase == opv1alpha1.OpsCancelledPhase ||
-		phase == opv1alpha1.OpsFailedPhase ||
-		phase == opv1alpha1.OpsAbortedPhase
+	return phase == opsv1alpha1.OpsSucceedPhase ||
+		phase == opsv1alpha1.OpsCancelledPhase ||
+		phase == opsv1alpha1.OpsFailedPhase ||
+		phase == opsv1alpha1.OpsAbortedPhase
 }
 
 // generateRestoredClusterName 生成 restore cluster 的名称

@@ -1,4 +1,4 @@
-package service
+package kbkit
 
 import (
 	"fmt"
@@ -15,7 +15,7 @@ type ParameterValidator struct {
 	constraints map[string]model.Parameter
 }
 
-// NewParameterValidator
+// NewParameterValidator -
 func NewParameterValidator(constraints []model.Parameter) *ParameterValidator {
 	constraintMap := make(map[string]model.Parameter, len(constraints))
 	for _, param := range constraints {

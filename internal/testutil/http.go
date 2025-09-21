@@ -2,6 +2,7 @@
 package testutil
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/creasty/defaults"
@@ -28,7 +29,8 @@ func customErrorHandler() echo.HTTPErrorHandler {
 	return func(err error, c echo.Context) {
 		code := http.StatusInternalServerError
 		msg := "Internal Server Error"
-		if he, ok := err.(*echo.HTTPError); ok {
+		var he *echo.HTTPError
+		if errors.As(err, &he) {
 			code = he.Code
 			if m, ok := he.Message.(string); ok {
 				msg = m

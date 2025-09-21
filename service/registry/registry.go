@@ -1,0 +1,43 @@
+package registry
+
+import (
+	"github.com/furutachiKurea/block-mechanica/internal/log"
+	"github.com/furutachiKurea/block-mechanica/service/adapter"
+	"github.com/furutachiKurea/block-mechanica/service/builder"
+	"github.com/furutachiKurea/block-mechanica/service/coordinator"
+)
+
+// Cluster 在这里注册 Block Mechanica 支持的数据库集群
+var Cluster = map[string]adapter.ClusterAdapter{
+	"postgresql": _postgresql,
+	"mysql":      _mysql,
+	// ... new types here
+}
+
+var (
+	_postgresql = adapter.ClusterAdapter{
+		Builder:     &builder.PostgreBuilder{},
+		Coordinator: &coordinator.PostgreSQLCoordinator{},
+	}
+
+	_mysql = adapter.ClusterAdapter{
+		Builder:     &builder.MySQLBuilder{},
+		Coordinator: &coordinator.MySQLCoordinator{},
+	}
+)
+
+// init 函数进行注册表验证
+func init() {
+	validateClusterRegistry()
+}
+
+// validateClusterRegistry 验证集群注册表的完整性
+func validateClusterRegistry() {
+	for dbType, clusterAdapter := range Cluster {
+		if err := clusterAdapter.Validate(); err != nil {
+			log.Fatal("Critical validation error", log.String("DB Type", dbType), log.Err(err))
+		}
+		log.Info("Database validation passed", log.String("DB Type", dbType))
+	}
+	log.Info("All database validation passed")
+}

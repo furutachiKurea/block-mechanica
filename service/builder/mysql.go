@@ -1,7 +1,6 @@
 package builder
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/furutachiKurea/block-mechanica/internal/log"
@@ -18,8 +17,8 @@ type MySQLBuilder struct {
 	BaseBuilder
 }
 
-func (b MySQLBuilder) BuildCluster(ctx context.Context, req model.ClusterInput) (*kbappsv1.Cluster, error) {
-	cluster, err := b.BaseBuilder.BuildCluster(ctx, req)
+func (b MySQLBuilder) BuildCluster(input model.ClusterInput) (*kbappsv1.Cluster, error) {
+	cluster, err := b.BaseBuilder.BuildCluster(input)
 	if err != nil {
 		return nil, fmt.Errorf("build base cluster: %w", err)
 	}
