@@ -74,6 +74,7 @@ func createConsoleEncoder(development bool) zapcore.Encoder {
 		encoderConfig = zap.NewProductionEncoderConfig()
 	}
 	encoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
+	encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
 	return zapcore.NewConsoleEncoder(encoderConfig)
 }
 
@@ -84,13 +85,13 @@ func createFileEncoder(development bool) zapcore.Encoder {
 		encoderConfig := zap.NewDevelopmentEncoderConfig()
 		encoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
 		encoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
-		encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+		encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
 		return zapcore.NewConsoleEncoder(encoderConfig)
 	} else {
 		// 生产环境：使用 JSON 格式
 		encoderConfig := zap.NewProductionEncoderConfig()
 		encoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
-		encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+		encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
 		return zapcore.NewJSONEncoder(encoderConfig)
 	}
 }
