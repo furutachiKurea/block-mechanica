@@ -16,6 +16,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -29,8 +30,9 @@ var (
 )
 
 const (
-	preflightProceed preflightDecision = iota + 1 // 创建
-	preflightSkip                                 // 跳过
+	preflightProceed           preflightDecision = iota + 1 // 创建
+	preflightSkip                                           // 跳过
+	preflightCleanupAndProceed                              // 清理阻塞操作后创建
 )
 
 type preflightDecision int
@@ -66,6 +68,36 @@ func (uniqueOps) decide(ctx context.Context, c client.Client, ops *opsv1alpha1.O
 	return preflightResult{Decision: preflightProceed}, nil
 }
 
+// priorityOps 优先级操作预检策略，用于处理高优先级操作（重启、停止、启动）,
+// 当使用此策略时，会主动清理所有阻塞的 OpsRequest，确保优先级操作能够立即执行,
+// 清理操作必须完全成功，否则整个创建过程将失败
+type priorityOps struct{}
+
+func (priorityOps) decide(ctx context.Context, c client.Client, ops *opsv1alpha1.OpsRequest) (preflightResult, error) {
+	// 查询集群的所有非终态 OpsRequest
+	blockingOps, err := getAllNonFinalOpsRequests(ctx, c, ops.Namespace, ops.Spec.ClusterName)
+	if err != nil {
+		return preflightResult{}, fmt.Errorf("get existing opsrequests: %w", err)
+	}
+
+	// 如果没有需要清理的操作，直接创建
+	if len(blockingOps) == 0 {
+		return preflightResult{Decision: preflightProceed}, nil
+	}
+
+	var toDelete []*opsv1alpha1.OpsRequest
+	for i := range blockingOps {
+		toDelete = append(toDelete, &blockingOps[i])
+	}
+
+	// 执行清理操作，必须完全成功
+	if err := forceDeleteAllBlockingOpsRequests(ctx, c, toDelete); err != nil {
+		return preflightResult{}, fmt.Errorf("failed to cleanup blocking operations: %w", err)
+	}
+
+	return preflightResult{Decision: preflightCleanupAndProceed}, nil
+}
+
 type createOpts struct {
 	preflight preflight
 }
@@ -78,6 +110,7 @@ func withPreflight(p preflight) createOption {
 }
 
 // CreateLifecycleOpsRequest 创建生命周期管理相关的 OpsRequest，供 Reconciler 使用
+// 生命周期操作（重启、停止、启动）使用 priorityOps 策略，会自动清理阻塞的操作
 func CreateLifecycleOpsRequest(ctx context.Context,
 	c client.Client,
 	cluster *kbappsv1.Cluster,
@@ -92,7 +125,8 @@ func CreateLifecycleOpsRequest(ctx context.Context,
 		}
 	}
 
-	if _, err := createOpsRequest(ctx, c, cluster, opsType, opsSpecific, withPreflight(uniqueOps{})); err != nil {
+	// 生命周期相关 Ops 使用 priorityOps option，避免阻塞
+	if _, err := createOpsRequest(ctx, c, cluster, opsType, opsSpecific, withPreflight(priorityOps{})); err != nil {
 		return err
 	}
 
@@ -426,4 +460,63 @@ func generateRestoredClusterName(originalClusterName string) string {
 	hashSuffix := fmt.Sprintf("%x", hash[:2])
 
 	return fmt.Sprintf("%s-restore-%s", baseName, hashSuffix)
+}
+
+// getAllNonFinalOpsRequests 获取指定集群的所有非终态 OpsRequest
+// 不限制操作类型，返回所有可能阻塞的 OpsRequest
+func getAllNonFinalOpsRequests(ctx context.Context, c client.Client, namespace, clusterName string) ([]opsv1alpha1.OpsRequest, error) {
+	var list opsv1alpha1.OpsRequestList
+
+	if err := c.List(ctx, &list,
+		client.InNamespace(namespace),
+		client.MatchingLabels(map[string]string{
+			constant.AppInstanceLabelKey: clusterName,
+		}),
+	); err != nil {
+		return nil, fmt.Errorf("list all opsrequests for cluster %s/%s: %w", namespace, clusterName, err)
+	}
+
+	var nonFinalOps []opsv1alpha1.OpsRequest
+	for _, ops := range list.Items {
+		if !isOpsRequestInFinalPhase(&ops) {
+			nonFinalOps = append(nonFinalOps, ops)
+		}
+	}
+
+	return nonFinalOps, nil
+}
+
+// forceDeleteAllBlockingOpsRequests 强制删除所有阻塞的 OpsRequest
+// 要求删除操作完全成功，如果任何一个删除失败，整个函数返回错误
+func forceDeleteAllBlockingOpsRequests(ctx context.Context, c client.Client, toDelete []*opsv1alpha1.OpsRequest) error {
+	for _, ops := range toDelete {
+		if err := forcefullyDeleteOpsRequest(ctx, c, ops); err != nil {
+			return fmt.Errorf("failed to delete blocking opsrequest %s: %w", ops.Name, err)
+		}
+	}
+
+	return nil
+}
+
+// forcefullyDeleteOpsRequest 强制删除 OpsRequest，
+// 先移除所有 finalizers，再删除资源，确保资源能够被彻底清理
+func forcefullyDeleteOpsRequest(ctx context.Context, c client.Client, ops *opsv1alpha1.OpsRequest) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		current := &opsv1alpha1.OpsRequest{}
+		if err := c.Get(ctx, client.ObjectKeyFromObject(ops), current); err != nil {
+			if errors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+
+		if len(current.ObjectMeta.Finalizers) > 0 {
+			current.ObjectMeta.Finalizers = []string{}
+			if err := c.Update(ctx, current); err != nil {
+				return err
+			}
+		}
+
+		return c.Delete(ctx, current)
+	})
 }
