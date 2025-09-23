@@ -70,6 +70,37 @@ type ClusterResource struct {
 	Replicas int32  `json:"replicas"`
 }
 
+// ParsedResources 解析后的资源信息
+type ParsedResources struct {
+	CPU     resource.Quantity
+	Memory  resource.Quantity
+	Storage resource.Quantity
+}
+
+// ParseResources 解析字符串形式的资源配置为 resource.Quantity 类型
+func (cr *ClusterResource) ParseResources() (*ParsedResources, error) {
+	cpuQuantity, err := resource.ParseQuantity(cr.CPU)
+	if err != nil {
+		return nil, fmt.Errorf("invalid CPU quantity %q: %w", cr.CPU, err)
+	}
+
+	memoryQuantity, err := resource.ParseQuantity(cr.Memory)
+	if err != nil {
+		return nil, fmt.Errorf("invalid memory quantity %q: %w", cr.Memory, err)
+	}
+
+	storageQuantity, err := resource.ParseQuantity(cr.Storage)
+	if err != nil {
+		return nil, fmt.Errorf("invalid storage quantity %q: %w", cr.Storage, err)
+	}
+
+	return &ParsedResources{
+		CPU:     cpuQuantity,
+		Memory:  memoryQuantity,
+		Storage: storageQuantity,
+	}, nil
+}
+
 // BackupSchedule backup schedule 配置
 type BackupSchedule struct {
 	Frequency BackupFrequency `json:"frequency"`
@@ -208,16 +239,25 @@ type ClusterStatus struct {
 
 // Status 副本状态信息
 type Status struct {
-	Name   string          `json:"name"`
-	Status corev1.PodPhase `json:"status"`
-	Ready  bool            `json:"ready"`
+	Name      string          `json:"name"`
+	Component string          `json:"component,omitempty"`
+	Status    corev1.PodPhase `json:"status"`
+	Ready     bool            `json:"ready"`
 }
 
-// ExpansionContext 伸缩操作的上下文，包含所有相关字段
-type ExpansionContext struct {
-	Cluster       *kbappsv1.Cluster
-	ComponentName string
+// ComponentName 组件名称
+type ComponentName string
 
+// ExpansionContext 伸缩操作的上下文
+//
+// Components 中记录了各个组件的 Desire Status，支持多组件不同规格伸缩
+type ExpansionContext struct {
+	Cluster    *kbappsv1.Cluster
+	Components map[ComponentName]ComponentExpansionContext // 组件名称 -> 伸缩操作的上下文
+}
+
+// ComponentExpansionContext 单个组件伸缩操作的上下文, 
+type ComponentExpansionContext struct {
 	// 水平伸缩
 	CurrentReplicas int32
 	DesiredReplicas int32
@@ -237,24 +277,42 @@ type ExpansionContext struct {
 }
 
 // HorizontalScalingOpsParams 用于水平伸缩的 OpsRequest
+// 支持多组件同规格伸缩
 type HorizontalScalingOpsParams struct {
-	Cluster       *kbappsv1.Cluster
-	ComponentName string
+	Cluster    *kbappsv1.Cluster
+	Components []ComponentHorizontalScaling
+}
+
+// ComponentHorizontalScaling 单个组件水平伸缩
+type ComponentHorizontalScaling struct {
+	Name          string
 	DeltaReplicas int32
 }
 
 // VerticalScalingOpsParams 用于垂直伸缩的 OpsRequest
+// 支持多组件同规格伸缩
 type VerticalScalingOpsParams struct {
-	Cluster       *kbappsv1.Cluster
-	ComponentName string
-	CPU           resource.Quantity
-	Memory        resource.Quantity
+	Cluster    *kbappsv1.Cluster
+	Components []ComponentVerticalScaling
+}
+
+// ComponentVerticalScaling 单个组件垂直伸缩
+type ComponentVerticalScaling struct {
+	Name   string
+	CPU    resource.Quantity
+	Memory resource.Quantity
 }
 
 // VolumeExpansionOpsParams 用于存储扩容的 OpsRequest
+// 支持多组件同规格扩容
 type VolumeExpansionOpsParams struct {
-	Cluster                 *kbappsv1.Cluster
-	ComponentName           string
+	Cluster    *kbappsv1.Cluster
+	Components []ComponentVolumeExpansion
+}
+
+// ComponentVolumeExpansion 单个组件存储扩容
+type ComponentVolumeExpansion struct {
+	Name                    string
 	VolumeClaimTemplateName string
 	Storage                 resource.Quantity
 }

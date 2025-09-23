@@ -4,20 +4,20 @@ import (
 	"fmt"
 
 	"github.com/furutachiKurea/block-mechanica/internal/log"
-
-	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
 	"github.com/furutachiKurea/block-mechanica/internal/model"
 	"github.com/furutachiKurea/block-mechanica/service/adapter"
+
+	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
 )
 
-var _ adapter.ClusterBuilder = &MySQLBuilder{}
+var _ adapter.ClusterBuilder = &MySQL{}
 
-// MySQLBuilder 实现 MySQL 的 Builder
-type MySQLBuilder struct {
+// MySQL 实现 MySQL 的 Builder
+type MySQL struct {
 	BaseBuilder
 }
 
-func (b MySQLBuilder) BuildCluster(input model.ClusterInput) (*kbappsv1.Cluster, error) {
+func (b MySQL) BuildCluster(input model.ClusterInput) (*kbappsv1.Cluster, error) {
 	cluster, err := b.BaseBuilder.BuildCluster(input)
 	if err != nil {
 		return nil, fmt.Errorf("build base cluster: %w", err)

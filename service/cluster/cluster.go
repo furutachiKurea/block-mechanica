@@ -111,39 +111,77 @@ func (s *Service) associateToKubeBlocksComponent(ctx context.Context, cluster *k
 	return nil
 }
 
-// getClusterPods 获取 Cluster 相关的 Pod 状态信息
+// getClusterPods 获取 Cluster 相关的 Pod 状态信息,
+// 会将 Cluster 的多个组件的 Pod 状态信息合并返回
 func (s *Service) getClusterPods(ctx context.Context, cluster *kbappsv1.Cluster) ([]model.Status, error) {
-	componentName, err := extractComponentName(cluster)
-	if err != nil {
-		return nil, err
+	if len(cluster.Spec.ComponentSpecs) == 0 {
+		return nil, fmt.Errorf("cluster %s/%s has no componentSpecs", cluster.Namespace, cluster.Name)
 	}
 
-	// 通过 InstanceSet 获取 Pod
-	instanceSet, err := getInstanceSetByCluster(ctx, s.client, cluster.Name, cluster.Namespace, componentName)
-	if err != nil {
-		if errors.Is(err, kbkit.ErrTargetNotFound) {
-			// InstanceSet 不存在时返回空列表，而不是错误
-			log.Info("InstanceSet not found, returning empty pod list",
-				log.String("cluster", cluster.Name),
-				log.String("component", componentName))
-			return []model.Status{}, nil
+	var (
+		namespace   = cluster.Namespace
+		clusterName = cluster.Name
+	)
+
+	var (
+		// podComponent 用于记录 Pod 所属的 Component 名称
+		podComponent = make(map[string]string)
+		// podNames 用于记录 Pod 名称列表
+		podNames = make([]string, 0)
+	)
+
+	for _, component := range cluster.Spec.ComponentSpecs {
+		componentName := component.Name
+		// 如果为空，则跳过，应该不会出现这种情况
+		if componentName == "" {
+			log.Warn("Component name is empty, skip",
+				log.String("cluster", clusterName),
+				log.String("component", componentName),
+			)
+			continue
 		}
-		return nil, fmt.Errorf("get instanceset: %w", err)
+
+		instanceSet, err := getInstanceSetByCluster(ctx, s.client, clusterName, namespace, componentName)
+		if err != nil {
+			if errors.Is(err, kbkit.ErrTargetNotFound) {
+				log.Info("InstanceSet not found, skip component",
+					log.String("cluster", clusterName),
+					log.String("component", componentName))
+				continue
+			}
+			return nil, fmt.Errorf("get instanceset for component %s: %w", componentName, err)
+		}
+
+		for _, instanceStatus := range instanceSet.Status.InstanceStatus {
+			if instanceStatus.PodName == "" {
+				continue
+			}
+			// 如果 Pod 名称已经存在，则跳过应该也不会出现这种情况
+			if _, exists := podComponent[instanceStatus.PodName]; exists {
+				continue
+			}
+
+			podComponent[instanceStatus.PodName] = componentName
+			podNames = append(podNames, instanceStatus.PodName)
+		}
 	}
 
-	var podNames []string
-	for _, instanceStatus := range instanceSet.Status.InstanceStatus {
-		podNames = append(podNames, instanceStatus.PodName)
+	if len(podNames) == 0 {
+		return []model.Status{}, nil
 	}
 
-	pods, err := getPodsByNames(ctx, s.client, podNames, cluster.Namespace)
+	pods, err := getPodsByNames(ctx, s.client, podNames, namespace)
 	if err != nil {
 		return nil, fmt.Errorf("get pods by names: %w", err)
 	}
 
 	result := make([]model.Status, 0, len(pods))
 	for _, pod := range pods {
-		result = append(result, buildPodStatus(pod))
+		componentName := podComponent[pod.Name]
+		if componentName == "" {
+			componentName = pod.Labels["apps.kubeblocks.io/component-name"]
+		}
+		result = append(result, buildPodStatus(pod, componentName))
 	}
 
 	return result, nil
@@ -166,7 +204,7 @@ func getPodsByNames(ctx context.Context, c client.Client, podNames []string, nam
 }
 
 // buildPodStatus 构建 Pod 状态信息
-func buildPodStatus(pod corev1.Pod) model.Status {
+func buildPodStatus(pod corev1.Pod, componentName string) model.Status {
 	ready := false
 
 	for _, condition := range pod.Status.Conditions {
@@ -177,27 +215,21 @@ func buildPodStatus(pod corev1.Pod) model.Status {
 	}
 
 	return model.Status{
-		Name:   pod.Name,
-		Status: pod.Status.Phase,
-		Ready:  ready,
+		Name:      pod.Name,
+		Component: componentName,
+		Status:    pod.Status.Phase,
+		Ready:     ready,
 	}
-}
-
-// extractComponentName 从 Cluster 中提取组件名称
-func extractComponentName(cluster *kbappsv1.Cluster) (string, error) {
-	if len(cluster.Spec.ComponentSpecs) == 0 {
-		return "", fmt.Errorf("cluster %s/%s has no componentSpecs", cluster.Namespace, cluster.Name)
-	}
-
-	componentName := cluster.Spec.ComponentSpecs[0].Name
-	if componentName == "" {
-		componentName = cluster.Spec.ClusterDef
-	}
-	return componentName, nil
 }
 
 // getInstanceSetByCluster 通过 cluster 和 component 获取 InstanceSet
-func getInstanceSetByCluster(ctx context.Context, c client.Client, clusterName, namespace, componentName string) (*workloadsv1.InstanceSet, error) {
+func getInstanceSetByCluster(
+	ctx context.Context,
+	c client.Client,
+	clusterName,
+	namespace,
+	componentName string,
+) (*workloadsv1.InstanceSet, error) {
 	var instanceSetList workloadsv1.InstanceSetList
 
 	// 优先使用索引查询

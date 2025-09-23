@@ -11,34 +11,34 @@ import (
 	"github.com/spf13/viper"
 )
 
-var _ adapter.Coordinator = &MySQLCoordinator{}
+var _ adapter.Coordinator = &MySQL{}
 
-// MySQLCoordinator 实现 Coordinator 接口
-type MySQLCoordinator struct {
+// MySQL 实现 Coordinator 接口
+type MySQL struct {
 	Base
 }
 
-func (c *MySQLCoordinator) TargetPort() int {
+func (c *MySQL) TargetPort() int {
 	return 3306
 }
 
-func (c *MySQLCoordinator) GetSecretName(clusterName string) string {
+func (c *MySQL) GetSecretName(clusterName string) string {
 	// MySQL 使用 mysql 作为中间部分和 root 作为账户类型
 	return fmt.Sprintf("%s-mysql-account-root", clusterName)
 }
 
-func (c *MySQLCoordinator) GetBackupMethod() string {
+func (c *MySQL) GetBackupMethod() string {
 	return "xtrabackup"
 }
 
-func (c *MySQLCoordinator) GetParametersConfigMap(clusterName string) *string {
+func (c *MySQL) GetParametersConfigMap(clusterName string) *string {
 	cmName := fmt.Sprintf("%s-mysql-mysql-replication-config", clusterName)
 	return &cmName
 }
 
 // ParseParameters 解析 MySQL ConfigMap 中的 my.cnf 配置参数
 // 基于实际的 ConfigMap 格式: data.my.cnf 包含 INI 格式的配置内容
-func (c *MySQLCoordinator) ParseParameters(configData map[string]string) ([]model.ParameterEntry, error) {
+func (c *MySQL) ParseParameters(configData map[string]string) ([]model.ParameterEntry, error) {
 	// 获取 my.cnf 配置内容
 	myCnfContent, exists := configData["my.cnf"]
 	if !exists {

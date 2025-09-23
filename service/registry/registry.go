@@ -11,18 +11,24 @@ import (
 var Cluster = map[string]adapter.ClusterAdapter{
 	"postgresql": _postgresql,
 	"mysql":      _mysql,
+	"redis":      _redis,
 	// ... new types here
 }
 
 var (
 	_postgresql = adapter.ClusterAdapter{
-		Builder:     &builder.PostgreBuilder{},
-		Coordinator: &coordinator.PostgreSQLCoordinator{},
+		Builder:     &builder.PostgreSQL{},
+		Coordinator: &coordinator.PostgreSQL{},
 	}
 
 	_mysql = adapter.ClusterAdapter{
-		Builder:     &builder.MySQLBuilder{},
-		Coordinator: &coordinator.MySQLCoordinator{},
+		Builder:     &builder.MySQL{},
+		Coordinator: &coordinator.MySQL{},
+	}
+
+	_redis = adapter.ClusterAdapter{
+		Builder:     &builder.Redis{},
+		Coordinator: &coordinator.Redis{},
 	}
 )
 

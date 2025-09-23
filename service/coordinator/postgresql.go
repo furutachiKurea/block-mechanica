@@ -11,34 +11,34 @@ import (
 	"github.com/spf13/viper"
 )
 
-var _ adapter.Coordinator = &PostgreSQLCoordinator{}
+var _ adapter.Coordinator = &PostgreSQL{}
 
-// PostgreSQLCoordinator 实现 Coordinator 接口
-type PostgreSQLCoordinator struct {
+// PostgreSQL 实现 Coordinator 接口
+type PostgreSQL struct {
 	Base
 }
 
-func (c *PostgreSQLCoordinator) TargetPort() int {
+func (c *PostgreSQL) TargetPort() int {
 	return 6432
 }
 
-func (c *PostgreSQLCoordinator) GetSecretName(clusterName string) string {
+func (c *PostgreSQL) GetSecretName(clusterName string) string {
 	// PostgreSQL 使用 postgresql 作为中间部分和 postgres 作为账户类型
 	return fmt.Sprintf("%s-postgresql-account-postgres", clusterName)
 }
 
-func (c *PostgreSQLCoordinator) GetBackupMethod() string {
+func (c *PostgreSQL) GetBackupMethod() string {
 	return "pg-basebackup"
 }
 
-func (c *PostgreSQLCoordinator) GetParametersConfigMap(clusterName string) *string {
+func (c *PostgreSQL) GetParametersConfigMap(clusterName string) *string {
 	cmName := fmt.Sprintf("%s-postgresql-postgresql-configuration", clusterName)
 	return &cmName
 }
 
 // ParseParameters 解析 PostgreSQL ConfigMap 中的 postgresql.conf 配置参数
 // 基于实际的 ConfigMap 格式: data.postgresql.conf 包含键值对格式的配置内容
-func (c *PostgreSQLCoordinator) ParseParameters(configData map[string]string) ([]model.ParameterEntry, error) {
+func (c *PostgreSQL) ParseParameters(configData map[string]string) ([]model.ParameterEntry, error) {
 	// 获取 postgresql.conf 配置内容
 	pgConfContent, exists := configData["postgresql.conf"]
 	if !exists {

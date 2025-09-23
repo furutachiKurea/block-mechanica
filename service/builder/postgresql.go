@@ -4,20 +4,20 @@ import (
 	"fmt"
 
 	"github.com/furutachiKurea/block-mechanica/internal/log"
-
-	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
 	"github.com/furutachiKurea/block-mechanica/internal/model"
 	"github.com/furutachiKurea/block-mechanica/service/adapter"
+
+	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
 )
 
-var _ adapter.ClusterBuilder = &PostgreBuilder{}
+var _ adapter.ClusterBuilder = &PostgreSQL{}
 
-// PostgreBuilder 实现 PostgreSQL 的 Builder
-type PostgreBuilder struct {
+// PostgreSQL 实现 PostgreSQL 的 Builder
+type PostgreSQL struct {
 	BaseBuilder
 }
 
-func (b PostgreBuilder) BuildCluster(input model.ClusterInput) (*kbappsv1.Cluster, error) {
+func (b PostgreSQL) BuildCluster(input model.ClusterInput) (*kbappsv1.Cluster, error) {
 	cluster, err := b.BaseBuilder.BuildCluster(input)
 	if err != nil {
 		return nil, fmt.Errorf("build base cluster: %w", err)

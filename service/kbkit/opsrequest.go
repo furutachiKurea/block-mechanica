@@ -125,33 +125,36 @@ func CreateHorizontalScalingOpsRequest(ctx context.Context,
 	c client.Client,
 	params model.HorizontalScalingOpsParams,
 ) error {
-	var specificOps opsv1alpha1.SpecificOpsRequest
+	var horizontalScalingList []opsv1alpha1.HorizontalScaling
 
-	if params.DeltaReplicas > 0 {
-		// ScaleOut
-		specificOps = opsv1alpha1.SpecificOpsRequest{
-			HorizontalScalingList: []opsv1alpha1.HorizontalScaling{
-				{
-					ComponentOps: opsv1alpha1.ComponentOps{ComponentName: params.ComponentName},
-					ScaleOut: &opsv1alpha1.ScaleOut{
-						ReplicaChanger: opsv1alpha1.ReplicaChanger{ReplicaChanges: &params.DeltaReplicas},
-					},
+	// 遍历所有组件，为每个组件创建对应的伸缩配置
+	for _, component := range params.Components {
+		var scaling opsv1alpha1.HorizontalScaling
+
+		if component.DeltaReplicas > 0 {
+			// ScaleOut
+			scaling = opsv1alpha1.HorizontalScaling{
+				ComponentOps: opsv1alpha1.ComponentOps{ComponentName: component.Name},
+				ScaleOut: &opsv1alpha1.ScaleOut{
+					ReplicaChanger: opsv1alpha1.ReplicaChanger{ReplicaChanges: &component.DeltaReplicas},
 				},
-			},
-		}
-	} else {
-		// ScaleIn
-		absReplicas := -params.DeltaReplicas
-		specificOps = opsv1alpha1.SpecificOpsRequest{
-			HorizontalScalingList: []opsv1alpha1.HorizontalScaling{
-				{
-					ComponentOps: opsv1alpha1.ComponentOps{ComponentName: params.ComponentName},
-					ScaleIn: &opsv1alpha1.ScaleIn{
-						ReplicaChanger: opsv1alpha1.ReplicaChanger{ReplicaChanges: &absReplicas},
-					},
+			}
+		} else {
+			// ScaleIn
+			absReplicas := -component.DeltaReplicas
+			scaling = opsv1alpha1.HorizontalScaling{
+				ComponentOps: opsv1alpha1.ComponentOps{ComponentName: component.Name},
+				ScaleIn: &opsv1alpha1.ScaleIn{
+					ReplicaChanger: opsv1alpha1.ReplicaChanger{ReplicaChanges: &absReplicas},
 				},
-			},
+			}
 		}
+
+		horizontalScalingList = append(horizontalScalingList, scaling)
+	}
+
+	specificOps := opsv1alpha1.SpecificOpsRequest{
+		HorizontalScalingList: horizontalScalingList,
 	}
 
 	_, err := createOpsRequest(ctx, c, params.Cluster, opsv1alpha1.HorizontalScalingType, specificOps)
@@ -163,22 +166,27 @@ func CreateVerticalScalingOpsRequest(ctx context.Context,
 	c client.Client,
 	params model.VerticalScalingOpsParams,
 ) error {
-	specificOps := opsv1alpha1.SpecificOpsRequest{
-		VerticalScalingList: []opsv1alpha1.VerticalScaling{
-			{
-				ComponentOps: opsv1alpha1.ComponentOps{ComponentName: params.ComponentName},
-				ResourceRequirements: corev1.ResourceRequirements{
-					Limits: corev1.ResourceList{
-						corev1.ResourceCPU:    params.CPU,
-						corev1.ResourceMemory: params.Memory,
-					},
-					Requests: corev1.ResourceList{
-						corev1.ResourceCPU:    params.CPU,
-						corev1.ResourceMemory: params.Memory,
-					},
+	var verticalScalingList []opsv1alpha1.VerticalScaling
+
+	// 遍历所有组件，为每个组件创建对应的资源配置
+	for _, component := range params.Components {
+		verticalScalingList = append(verticalScalingList, opsv1alpha1.VerticalScaling{
+			ComponentOps: opsv1alpha1.ComponentOps{ComponentName: component.Name},
+			ResourceRequirements: corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    component.CPU,
+					corev1.ResourceMemory: component.Memory,
+				},
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    component.CPU,
+					corev1.ResourceMemory: component.Memory,
 				},
 			},
-		},
+		})
+	}
+
+	specificOps := opsv1alpha1.SpecificOpsRequest{
+		VerticalScalingList: verticalScalingList,
 	}
 
 	_, err := createOpsRequest(ctx, c, params.Cluster, opsv1alpha1.VerticalScalingType, specificOps)
@@ -190,18 +198,23 @@ func CreateVolumeExpansionOpsRequest(ctx context.Context,
 	c client.Client,
 	params model.VolumeExpansionOpsParams,
 ) error {
-	specificOps := opsv1alpha1.SpecificOpsRequest{
-		VolumeExpansionList: []opsv1alpha1.VolumeExpansion{
-			{
-				ComponentOps: opsv1alpha1.ComponentOps{ComponentName: params.ComponentName},
-				VolumeClaimTemplates: []opsv1alpha1.OpsRequestVolumeClaimTemplate{
-					{
-						Name:    params.VolumeClaimTemplateName,
-						Storage: params.Storage,
-					},
+	var volumeExpansionList []opsv1alpha1.VolumeExpansion
+
+	// 遍历所有组件，为每个组件创建对应的存储扩容配置
+	for _, component := range params.Components {
+		volumeExpansionList = append(volumeExpansionList, opsv1alpha1.VolumeExpansion{
+			ComponentOps: opsv1alpha1.ComponentOps{ComponentName: component.Name},
+			VolumeClaimTemplates: []opsv1alpha1.OpsRequestVolumeClaimTemplate{
+				{
+					Name:    component.VolumeClaimTemplateName,
+					Storage: component.Storage,
 				},
 			},
-		},
+		})
+	}
+
+	specificOps := opsv1alpha1.SpecificOpsRequest{
+		VolumeExpansionList: volumeExpansionList,
 	}
 
 	_, err := createOpsRequest(ctx, c, params.Cluster, opsv1alpha1.VolumeExpansionType, specificOps)

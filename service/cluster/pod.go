@@ -2,7 +2,6 @@ package cluster
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -13,6 +12,8 @@ import (
 	"github.com/furutachiKurea/block-mechanica/internal/model"
 	"github.com/furutachiKurea/block-mechanica/service/kbkit"
 
+	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
+	workloadsv1 "github.com/apecloud/kubeblocks/apis/workloads/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -22,7 +23,7 @@ import (
 // 获取指定 service_id 的 Cluster 管理的指定 Pod 的详细信息
 func (s *Service) GetPodDetail(ctx context.Context, serviceID string, podName string) (*model.PodDetail, error) {
 	cluster, err := kbkit.GetClusterByServiceID(ctx, s.client, serviceID)
-	if err != nil && errors.Is(err, kbkit.ErrTargetNotFound) {
+	if err != nil {
 		return nil, fmt.Errorf("get cluster by service_id %s: %w", serviceID, err)
 	}
 
@@ -41,16 +42,63 @@ func (s *Service) GetPodDetail(ctx context.Context, serviceID string, podName st
 		return nil, fmt.Errorf("get pod %s: %w", podName, err)
 	}
 
-	version := ""
-	componentDef := ""
-	if len(cluster.Spec.ComponentSpecs) > 0 {
-		// Version 字段按注释约定来自 componentDef，若为空则回退 serviceVersion
-		if v := cluster.Spec.ComponentSpecs[0].ComponentDef; v != "" {
-			version = v
+	var (
+		componentName   = pod.Labels["apps.kubeblocks.io/component-name"]
+		instanceSetName = pod.Labels["workloads.kubeblocks.io/instance"]
+		componentDef    = ""
+		version         = ""
+	)
+
+	// 同 instanceSet 获取 componentDef
+	if instanceSetName != "" {
+		var instanceSet workloadsv1.InstanceSet
+		if err := s.client.Get(
+			ctx, client.ObjectKey{
+				Name:      instanceSetName,
+				Namespace: cluster.Namespace,
+			}, &instanceSet); err != nil {
+			log.Warn("Failed to get instanceset for pod",
+				log.String("pod", podName),
+				log.String("instanceset", instanceSetName),
+				log.Err(err))
 		} else {
-			version = cluster.Spec.ComponentSpecs[0].ServiceVersion
+			if componentName == "" {
+				componentName = instanceSet.Labels["apps.kubeblocks.io/component-name"]
+			}
+			if v := instanceSet.Annotations["app.kubernetes.io/component"]; v != "" {
+				componentDef = v
+			}
 		}
-		componentDef = cluster.Spec.ComponentSpecs[0].ComponentDef
+	}
+
+	// 通过 componentSpec 获取 version
+	if componentName != "" {
+		if spec := findComponentSpec(cluster, componentName); spec != nil {
+			if componentDef == "" {
+				componentDef = spec.ComponentDef
+			}
+			if spec.ComponentDef != "" {
+				version = spec.ComponentDef
+			} else if spec.ServiceVersion != "" {
+				version = spec.ServiceVersion
+			}
+		}
+	}
+
+	if version == "" && componentDef != "" {
+		version = componentDef
+	}
+
+	if componentDef == "" && len(cluster.Spec.ComponentSpecs) > 0 {
+		fallback := cluster.Spec.ComponentSpecs[0]
+		componentDef = fallback.ComponentDef
+		if version == "" {
+			if fallback.ComponentDef != "" {
+				version = fallback.ComponentDef
+			} else {
+				version = fallback.ServiceVersion
+			}
+		}
 	}
 
 	status := buildPodDetailStatus(*pod)
@@ -94,6 +142,18 @@ func findPodByName(pods []model.Status, podName string) *model.Status {
 	for _, pod := range pods {
 		if pod.Name == podName {
 			return &pod
+		}
+	}
+	return nil
+}
+
+func findComponentSpec(cluster *kbappsv1.Cluster, componentName string) *kbappsv1.ClusterComponentSpec {
+	if cluster == nil || componentName == "" {
+		return nil
+	}
+	for i := range cluster.Spec.ComponentSpecs {
+		if cluster.Spec.ComponentSpecs[i].Name == componentName {
+			return &cluster.Spec.ComponentSpecs[i]
 		}
 	}
 	return nil

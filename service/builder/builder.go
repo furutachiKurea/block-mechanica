@@ -8,18 +8,18 @@ import (
 	"fmt"
 	"time"
 
-	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
 	"github.com/furutachiKurea/block-mechanica/internal/model"
 	"github.com/furutachiKurea/block-mechanica/service/adapter"
+
+	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 )
 
 var _ adapter.ClusterBuilder = &BaseBuilder{}
 
-// BaseBuilder 实现 ClusterBuilder 接口，所有的 Builder 都应基于 BaseBuilder 实现
+// BaseBuilder 实现 ClusterBuilder 接口，所有的 BaseBuilder 都应基于 BaseBuilder 实现
 type BaseBuilder struct{}
 
 // generateShortName 生成基于哈希的短名称，确保唯一性且长度可控
@@ -35,18 +35,12 @@ func (b BaseBuilder) generateShortName(originalName string) string {
 	return fmt.Sprintf("%s-%s", originalName, hashSuffix)
 }
 
+// BuildCluster 用于构建最基础的 cluster，
+// 其他 builder 只需要在此 Cluster 的基础上进行修改/补充 addon 特定的配置
 func (b BaseBuilder) BuildCluster(input model.ClusterInput) (*kbappsv1.Cluster, error) {
-	cpuQuantity, err := resource.ParseQuantity(input.CPU)
+	resources, err := input.ParseResources()
 	if err != nil {
-		return nil, fmt.Errorf("invalid CPU quantity: %w", err)
-	}
-	memoryQuantity, err := resource.ParseQuantity(input.Memory)
-	if err != nil {
-		return nil, fmt.Errorf("invalid memory quantity: %w", err)
-	}
-	diskQuantity, err := resource.ParseQuantity(input.Storage)
-	if err != nil {
-		return nil, fmt.Errorf("invalid disk quantity: %w", err)
+		return nil, err
 	}
 
 	// 生成短名称，避免同团队内重名
@@ -67,12 +61,12 @@ func (b BaseBuilder) BuildCluster(input model.ClusterInput) (*kbappsv1.Cluster, 
 					Replicas:       input.Replicas,
 					Resources: corev1.ResourceRequirements{
 						Limits: corev1.ResourceList{
-							corev1.ResourceCPU:    cpuQuantity,
-							corev1.ResourceMemory: memoryQuantity,
+							corev1.ResourceCPU:    resources.CPU,
+							corev1.ResourceMemory: resources.Memory,
 						},
 						Requests: corev1.ResourceList{
-							corev1.ResourceCPU:    cpuQuantity,
-							corev1.ResourceMemory: memoryQuantity,
+							corev1.ResourceCPU:    resources.CPU,
+							corev1.ResourceMemory: resources.Memory,
 						},
 					},
 					VolumeClaimTemplates: []kbappsv1.ClusterComponentVolumeClaimTemplate{
@@ -85,7 +79,7 @@ func (b BaseBuilder) BuildCluster(input model.ClusterInput) (*kbappsv1.Cluster, 
 								},
 								Resources: corev1.VolumeResourceRequirements{
 									Requests: corev1.ResourceList{
-										corev1.ResourceStorage: diskQuantity,
+										corev1.ResourceStorage: resources.Storage,
 									},
 								},
 							},
