@@ -99,10 +99,30 @@ func (s *Service) convertOpsRequestToEventItem(opsRequest *opsv1alpha1.OpsReques
 		status = "failure"
 		finalStatus = "complete"
 		message = "Operation was cancelled"
+	case opsv1alpha1.OpsAbortedPhase:
+		status = "failure"
+		finalStatus = "complete"
+		message = "Operation was aborted"
+	case opsv1alpha1.OpsPendingPhase:
+		status = "pending"
+		finalStatus = "running"
+		message = "Operation is pending"
+	case opsv1alpha1.OpsCreatingPhase:
+		status = "running"
+		finalStatus = "running"
+		message = "Operation is being created"
+	case opsv1alpha1.OpsRunningPhase:
+		status = "running"
+		finalStatus = "running"
+		message = "Operation is running"
+	case opsv1alpha1.OpsCancellingPhase:
+		status = "cancelling"
+		finalStatus = "running"
+		message = "Operation is being cancelled"
 	default:
-		status = ""
-		finalStatus = ""
-		message = "Operation is in progress"
+		status = "unknown"
+		finalStatus = "running"
+		message = "Operation status unknown"
 	}
 
 	return model.EventItem{
