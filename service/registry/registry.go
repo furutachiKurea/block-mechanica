@@ -12,6 +12,7 @@ var Cluster = map[string]adapter.ClusterAdapter{
 	"postgresql": _postgresql,
 	"mysql":      _mysql,
 	"redis":      _redis,
+	"rabbitmq":   _rabbitmq,
 	// ... new types here
 }
 
@@ -29,6 +30,10 @@ var (
 	_redis = adapter.ClusterAdapter{
 		Builder:     &builder.Redis{},
 		Coordinator: &coordinator.Redis{},
+	}
+	_rabbitmq = adapter.ClusterAdapter{
+		Builder:     &builder.RabbitMQ{},
+		Coordinator: &coordinator.RabbitMQ{},
 	}
 )
 
