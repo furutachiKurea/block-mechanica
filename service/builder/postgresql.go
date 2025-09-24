@@ -14,11 +14,11 @@ var _ adapter.ClusterBuilder = &PostgreSQL{}
 
 // PostgreSQL 实现 PostgreSQL 的 Builder
 type PostgreSQL struct {
-	BaseBuilder
+	Builder
 }
 
-func (b PostgreSQL) BuildCluster(input model.ClusterInput) (*kbappsv1.Cluster, error) {
-	cluster, err := b.BaseBuilder.BuildCluster(input)
+func (b *PostgreSQL) BuildCluster(input model.ClusterInput) (*kbappsv1.Cluster, error) {
+	cluster, err := b.Builder.BuildCluster(input)
 	if err != nil {
 		return nil, fmt.Errorf("build base cluster: %w", err)
 	}

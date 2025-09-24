@@ -15,7 +15,7 @@ var _ adapter.Coordinator = &PostgreSQL{}
 
 // PostgreSQL 实现 Coordinator 接口
 type PostgreSQL struct {
-	Base
+	Coordinator
 }
 
 func (c *PostgreSQL) TargetPort() int {

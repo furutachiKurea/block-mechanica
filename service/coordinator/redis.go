@@ -14,26 +14,26 @@ var _ adapter.Coordinator = &Redis{}
 type Redis struct {
 }
 
-func (r Redis) TargetPort() int {
+func (r *Redis) TargetPort() int {
 	return 6379
 }
 
-func (r Redis) GetSecretName(clusterName string) string {
+func (r *Redis) GetSecretName(clusterName string) string {
 	return fmt.Sprintf("%s-redis-account-default", clusterName)
 }
 
-func (r Redis) GetBackupMethod() string {
+func (r *Redis) GetBackupMethod() string {
 	return "datafile"
 }
 
-func (r Redis) GetParametersConfigMap(clusterName string) *string {
+func (r *Redis) GetParametersConfigMap(clusterName string) *string {
 	cmName := fmt.Sprintf("%s-redis-redis-replication-config", clusterName)
 	return &cmName
 }
 
 // ParseParameters 解析 Redis ConfigMap 中的 redis.conf 配置参数
 // 基于实际的 ConfigMap 格式: data.redis.conf 包含 Redis 配置格式的内容
-func (r Redis) ParseParameters(configData map[string]string) ([]model.ParameterEntry, error) {
+func (r *Redis) ParseParameters(configData map[string]string) ([]model.ParameterEntry, error) {
 	// 获取 redis.conf 配置内容
 	redisConfContent, exists := configData["redis.conf"]
 	if !exists {
@@ -62,7 +62,7 @@ func (r Redis) ParseParameters(configData map[string]string) ([]model.ParameterE
 
 // parseConfigLine 解析单行 Redis 配置
 // 返回 nil 表示该行应被跳过（注释或空行）
-func (r Redis) parseConfigLine(line string) *model.ParameterEntry {
+func (r *Redis) parseConfigLine(line string) *model.ParameterEntry {
 	line = strings.TrimSpace(line)
 
 	if line == "" {
@@ -99,7 +99,7 @@ func (r Redis) parseConfigLine(line string) *model.ParameterEntry {
 }
 
 // cleanQuotedValue 清理带引号的值，去除外层引号但保持内容
-func (r Redis) cleanQuotedValue(value string) string {
+func (r *Redis) cleanQuotedValue(value string) string {
 	value = strings.TrimSpace(value)
 
 	if len(value) >= 2 && strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") {

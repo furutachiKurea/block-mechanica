@@ -14,11 +14,11 @@ var _ adapter.ClusterBuilder = &Redis{}
 
 // Redis 实现 replication Redis cluster
 type Redis struct {
-	BaseBuilder
+	Builder
 }
 
-func (r Redis) BuildCluster(input model.ClusterInput) (*kbappsv1.Cluster, error) {
-	cluster, err := r.BaseBuilder.BuildCluster(input)
+func (r *Redis) BuildCluster(input model.ClusterInput) (*kbappsv1.Cluster, error) {
+	cluster, err := r.Builder.BuildCluster(input)
 	if err != nil {
 		return nil, err
 	}

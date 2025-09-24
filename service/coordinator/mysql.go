@@ -15,7 +15,7 @@ var _ adapter.Coordinator = &MySQL{}
 
 // MySQL 实现 Coordinator 接口
 type MySQL struct {
-	Base
+	Coordinator
 }
 
 func (c *MySQL) TargetPort() int {

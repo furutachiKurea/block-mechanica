@@ -17,14 +17,14 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-var _ adapter.ClusterBuilder = &BaseBuilder{}
+var _ adapter.ClusterBuilder = &Builder{}
 
-// BaseBuilder 实现 ClusterBuilder 接口，所有的 BaseBuilder 都应基于 BaseBuilder 实现
-type BaseBuilder struct{}
+// Builder 实现 ClusterBuilder 接口，所有的 Builder 都应基于 Builder 实现
+type Builder struct{}
 
 // generateShortName 生成基于哈希的短名称，确保唯一性且长度可控
 // 格式：{originalName}-{hash4}，其中 hash4 是 MD5 哈希的前4位十六进制字符
-func (b BaseBuilder) generateShortName(originalName string) string {
+func (b *Builder) generateShortName(originalName string) string {
 	timestamp := time.Now().UnixNano()
 	input := fmt.Sprintf("%s-%d", originalName, timestamp)
 
@@ -37,7 +37,7 @@ func (b BaseBuilder) generateShortName(originalName string) string {
 
 // BuildCluster 用于构建最基础的 cluster，
 // 其他 builder 只需要在此 Cluster 的基础上进行修改/补充 addon 特定的配置
-func (b BaseBuilder) BuildCluster(input model.ClusterInput) (*kbappsv1.Cluster, error) {
+func (b *Builder) BuildCluster(input model.ClusterInput) (*kbappsv1.Cluster, error) {
 	resources, err := input.ParseResources()
 	if err != nil {
 		return nil, err

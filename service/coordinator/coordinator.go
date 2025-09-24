@@ -12,35 +12,34 @@ import (
 	"github.com/furutachiKurea/block-mechanica/service/adapter"
 )
 
-var _ adapter.Coordinator = &Base{}
+var _ adapter.Coordinator = &Coordinator{}
 
-// Base 实现 Coordinator 接口，所有的 Coordinator 都应基于 Base 实现
-type Base struct {
+// Coordinator 实现 Coordinator 接口，所有的 Coordinator 都应基于 Coordinator 实现
+type Coordinator struct {
 }
 
-func (c *Base) TargetPort() int {
+func (c *Coordinator) TargetPort() int {
 	return -1
 }
 
-func (c *Base) GetSecretName(clusterName string) string {
-	// Base 实现使用通用的 root 账户格式，但实际不应被直接使用
+func (c *Coordinator) GetSecretName(clusterName string) string {
+	// Coordinator 实现使用通用的 root 账户格式，但实际不应被直接使用
 	// 每个具体的 Coordinator 都应该重写此方法
 	return fmt.Sprintf("%s-account-root", clusterName)
 }
 
-func (c *Base) GetBackupMethod() string {
-	// Base 实现返回默认备份方法，但实际不应被直接使用
-	// 每个具体的 Coordinator 都应该重写此方法
-	return "default"
+// GetBackupMethod 返回空字符串，任何支持备份的 Addon 都应该重写此方法
+func (c *Coordinator) GetBackupMethod() string {
+	return ""
 }
 
-func (c *Base) GetParametersConfigMap(clusterName string) *string {
+// GetParametersConfigMap 返回 nil，任何支持参数配置的 Addon 都应该重写此方法
+func (c *Coordinator) GetParametersConfigMap(clusterName string) *string {
 	return nil
 }
 
-func (c *Base) ParseParameters(configData map[string]string) ([]model.ParameterEntry, error) {
-	// Base 实现不解析任何配置，返回空结果
-	// 每个具体的 Coordinator 都应该重写此方法
+// ParseParameters 返回空切片，任何支持参数配置的 Addon 都应该重写此方法
+func (c *Coordinator) ParseParameters(configData map[string]string) ([]model.ParameterEntry, error) {
 	return []model.ParameterEntry{}, nil
 }
 
