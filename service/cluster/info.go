@@ -37,13 +37,19 @@ func (s *Service) GetConnectInfo(ctx context.Context, rbd model.RBDService) ([]m
 	secretName := clusterAdapter.Coordinator.GetSecretName(cluster.Name)
 
 	secret := &corev1.Secret{}
-	err = wait.PollUntilContextCancel(ctx, 2*time.Second, true, func(ctx context.Context) (bool, error) {
+	timeoutCtx, cancel := context.WithTimeout(ctx, 80*time.Second)
+	defer cancel()
+	err = wait.PollUntilContextCancel(timeoutCtx, 2*time.Second, true, func(ctx context.Context) (bool, error) {
 		err := s.client.Get(ctx, client.ObjectKey{
 			Name:      secretName,
 			Namespace: cluster.Namespace,
 		}, secret)
 
 		if err != nil {
+			log.Debug("Failed to get secret or not exist, skipping",
+				log.String("cluster", cluster.Name),
+				log.Err(err),
+			)
 			return false, nil
 		}
 
@@ -122,6 +128,7 @@ func (s *Service) GetClusterDetail(ctx context.Context, rbd model.RBDService) (*
 		return nil, fmt.Errorf("build backup info: %w", err)
 	}
 	detail.Backup = *backupInfo
+	detail.Backup.IsSupportBackup = kbkit.IsSupportBackup(kbkit.ClusterType(cluster))
 
 	log.Debug("get cluster detail",
 		log.Any("detail", detail),

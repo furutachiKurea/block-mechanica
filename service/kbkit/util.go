@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/furutachiKurea/block-mechanica/internal/index"
+	"github.com/furutachiKurea/block-mechanica/service/registry"
 
 	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -60,4 +61,13 @@ func Paginate[T any](items []T, page, pageSize int) []T {
 
 func ClusterType(cluster *kbappsv1.Cluster) string {
 	return cluster.Spec.ClusterDef
+}
+
+// IsSupportBackup 判定给定的数据库类型是否支持备份
+func IsSupportBackup(addon string) bool {
+	adapter, ok := registry.Cluster[addon]
+	if !ok {
+		return false
+	}
+	return adapter.Coordinator.GetBackupMethod() != ""
 }

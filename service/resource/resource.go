@@ -55,8 +55,9 @@ func (s *Service) GetAddons(ctx context.Context) ([]*model.Addon, error) {
 		}
 
 		addon := &model.Addon{
-			Type:    item.Name,
-			Version: mono.Sorted(releases),
+			Type:            item.Name,
+			Version:         mono.Sorted(releases),
+			IsSupportBackup: kbkit.IsSupportBackup(item.Name),
 		}
 		addons = append(addons, addon)
 	}

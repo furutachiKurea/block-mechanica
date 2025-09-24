@@ -226,6 +226,7 @@ type ClusterResourceStatus struct {
 
 // BackupInfo Cluster 的备份信息
 type BackupInfo struct {
+	IsSupportBackup bool `json:"support_backup"`
 	ClusterBackup
 }
 
@@ -256,7 +257,7 @@ type ExpansionContext struct {
 	Components map[ComponentName]ComponentExpansionContext // 组件名称 -> 伸缩操作的上下文
 }
 
-// ComponentExpansionContext 单个组件伸缩操作的上下文, 
+// ComponentExpansionContext 单个组件伸缩操作的上下文
 type ComponentExpansionContext struct {
 	// 水平伸缩
 	CurrentReplicas int32

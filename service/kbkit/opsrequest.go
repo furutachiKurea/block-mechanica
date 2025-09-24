@@ -22,9 +22,8 @@ import (
 
 // OpsRequest 配置项
 var (
-	opsTimeoutSecond      int32 = 24 * 60 * 60
-	opsLifeAfterUnsuccess int32 = 1 * 60 * 60
-	opsLifeAfterSucceed   int32 = 24 * 60 * 60
+	opsTimeoutSecond        int32 = 10 * 60
+	opsPreConditionDeadline int32 = 5 * 60
 
 	defaultBackupDeletionPolicy = "Delete"
 )
@@ -363,11 +362,10 @@ func buildOpsRequest(
 			Labels:    labels,
 		},
 		Spec: opsv1alpha1.OpsRequestSpec{
-			ClusterName:                           cluster.Name,
-			Type:                                  opsType,
-			TimeoutSeconds:                        &opsTimeoutSecond,
-			TTLSecondsAfterUnsuccessfulCompletion: opsLifeAfterUnsuccess,
-			TTLSecondsAfterSucceed:                opsLifeAfterSucceed,
+			ClusterName:                 cluster.Name,
+			Type:                        opsType,
+			TimeoutSeconds:              &opsTimeoutSecond,
+			PreConditionDeadlineSeconds: &opsPreConditionDeadline,
 
 			SpecificOpsRequest: specificOps,
 		},
