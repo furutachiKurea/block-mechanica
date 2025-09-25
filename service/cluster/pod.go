@@ -102,7 +102,7 @@ func (s *Service) GetPodDetail(ctx context.Context, serviceID string, podName st
 	}
 
 	status := buildPodDetailStatus(*pod)
-	containers := buildContainerDetails(pod.Spec.Containers, pod.Status.ContainerStatuses, componentDef)
+	containers := buildContainerDetails(pod.Spec.Containers, pod.Status.ContainerStatuses, componentDef, componentName)
 	events, err := getPodEventsByIndex(ctx, s.client, podName, pod.Namespace)
 	if err != nil {
 		log.Warn("Failed to get pod events",
@@ -195,8 +195,8 @@ func buildPodDetailStatus(pod corev1.Pod) model.PodStatus {
 	}
 }
 
-// buildContainerDetails 构建容器详情列表，只返回设置了资源限制的工作容器
-func buildContainerDetails(containers []corev1.Container, containerStatuses []corev1.ContainerStatus, componentDef string) []model.Container {
+// buildContainerDetails 构建容器详情列表，基于组件名称识别并返回主要工作容器
+func buildContainerDetails(containers []corev1.Container, containerStatuses []corev1.ContainerStatus, componentDef string, componentName string) []model.Container {
 	var details []model.Container
 
 	statusMap := make(map[string]corev1.ContainerStatus)
@@ -205,7 +205,7 @@ func buildContainerDetails(containers []corev1.Container, containerStatuses []co
 	}
 
 	for _, container := range containers {
-		if !hasResourceLimits(container.Resources.Limits) {
+		if !isPrimaryContainer(container.Name, componentName) {
 			continue
 		}
 
@@ -312,6 +312,12 @@ func processEvents(events []corev1.Event) []model.PodEvent {
 	return result
 }
 
+// isPrimaryContainer 判断容器是否为主要业务容器
+// 基于 KubeBlocks component-name 标准进行判断
+func isPrimaryContainer(containerName, componentName string) bool {
+	return containerName == componentName
+}
+
 // formatAge 将时间差格式化为人类可读的格式 (如 "5m", "2h", "3d")
 func formatAge(eventTime metav1.Time) string {
 	if eventTime.IsZero() {
@@ -331,14 +337,3 @@ func formatAge(eventTime metav1.Time) string {
 	}
 }
 
-// hasResourceLimits 检查是否设置了 CPU 或 Memory 资源限制
-func hasResourceLimits(limits corev1.ResourceList) bool {
-	if limits == nil {
-		return false
-	}
-
-	cpu, hasCPU := limits[corev1.ResourceCPU]
-	memory, hasMemory := limits[corev1.ResourceMemory]
-
-	return (hasCPU && !cpu.IsZero()) || (hasMemory && !memory.IsZero())
-}
