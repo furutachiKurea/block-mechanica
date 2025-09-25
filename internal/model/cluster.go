@@ -205,8 +205,9 @@ type ClusterDetail struct {
 type BasicInfo struct {
 	ClusterInfo
 	RBDService
-	Status   ClusterStatus `json:"status"`
-	Replicas []Status      `json:"replicas"`
+	Status          ClusterStatus `json:"status"`
+	Replicas        []Status      `json:"replicas"`
+	IsSupportBackup bool          `json:"support_backup"`
 }
 
 // ClusterResourceStatus Cluster 的实际资源状态信息
@@ -226,7 +227,6 @@ type ClusterResourceStatus struct {
 
 // BackupInfo Cluster 的备份信息
 type BackupInfo struct {
-	IsSupportBackup bool `json:"support_backup"`
 	ClusterBackup
 }
 

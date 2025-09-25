@@ -128,7 +128,6 @@ func (s *Service) GetClusterDetail(ctx context.Context, rbd model.RBDService) (*
 		return nil, fmt.Errorf("build backup info: %w", err)
 	}
 	detail.Backup = *backupInfo
-	detail.Backup.IsSupportBackup = kbkit.IsSupportBackup(kbkit.ClusterType(cluster))
 
 	log.Debug("get cluster detail",
 		log.Any("detail", detail),
@@ -184,7 +183,8 @@ func (s *Service) buildBasicInfo(
 			StatusCN:  transStatus(status),
 			StartTime: startTime,
 		},
-		Replicas: podList,
+		Replicas:        podList,
+		IsSupportBackup: kbkit.IsSupportBackup(kbkit.ClusterType(cluster)),
 	}
 }
 
