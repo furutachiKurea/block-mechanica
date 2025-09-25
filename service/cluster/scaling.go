@@ -12,6 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -28,6 +29,12 @@ func (s *Service) ExpansionCluster(ctx context.Context, expansion model.Expansio
 	if err != nil {
 		return err
 	}
+
+	// 禁止对停止或停止中的 Cluster 进行伸缩
+	if cluster.Status.Phase == kbappsv1.StoppedClusterPhase || cluster.Status.Phase == kbappsv1.StoppingClusterPhase {
+		return fmt.Errorf("cluster %s/%s is not running", cluster.Namespace, cluster.Name)
+	}
+
 	if len(cluster.Spec.ComponentSpecs) == 0 {
 		return fmt.Errorf("cluster %s/%s has no componentSpecs", cluster.Namespace, cluster.Name)
 	}

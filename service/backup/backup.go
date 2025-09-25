@@ -14,6 +14,7 @@ import (
 	"github.com/furutachiKurea/block-mechanica/service/registry"
 
 	datav1alpha1 "github.com/apecloud/kubeblocks/apis/dataprotection/v1alpha1"
+	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
 	"github.com/apecloud/kubeblocks/pkg/constant"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -151,6 +152,10 @@ func (s *Service) BackupCluster(ctx context.Context, req model.BackupInput) erro
 	cluster, err := kbkit.GetClusterByServiceID(ctx, s.client, req.ServiceID)
 	if err != nil {
 		return fmt.Errorf("get cluster by service_id: %w", err)
+	}
+
+	if cluster.Status.Phase == kbappsv1.StoppedClusterPhase || cluster.Status.Phase == kbappsv1.StoppingClusterPhase {
+		return fmt.Errorf("cluster %s/%s is not running", cluster.Namespace, cluster.Name)
 	}
 
 	adapter := registry.Cluster[kbkit.ClusterType(cluster)]

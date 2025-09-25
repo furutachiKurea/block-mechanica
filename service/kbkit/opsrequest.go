@@ -72,8 +72,6 @@ func (uniqueOps) decide(ctx context.Context, c client.Client, ops *opsv1alpha1.O
 // priorityOps 优先级操作预检策略，用于处理高优先级操作（重启、停止、启动）,
 // 当使用此策略时，会主动清理所有阻塞的 OpsRequest，确保优先级操作能够立即执行,
 // 清理操作必须完全成功，否则整个创建过程将失败
-//
-// Deprecated: 改为将生命周期相关的 OpsRequest 设置为 force: true 和 enqueueOnForce: false 可避免阻塞
 type priorityOps struct{}
 
 func (priorityOps) decide(ctx context.Context, c client.Client, ops *opsv1alpha1.OpsRequest) (preflightResult, error) {
@@ -88,14 +86,33 @@ func (priorityOps) decide(ctx context.Context, c client.Client, ops *opsv1alpha1
 		return preflightResult{Decision: preflightProceed}, nil
 	}
 
-	var toDelete []*opsv1alpha1.OpsRequest
+	var (
+		// 通过超时结束
+		toExpire []*opsv1alpha1.OpsRequest
+		// 通过 cancel 结束（仅用于 VerticalScaling 和 HorizontalScaling）
+		toCancel []*opsv1alpha1.OpsRequest
+	)
+
 	for i := range blockingOps {
-		toDelete = append(toDelete, &blockingOps[i])
+		op := &blockingOps[i]
+		switch op.Spec.Type {
+		case opsv1alpha1.HorizontalScalingType, opsv1alpha1.VerticalScalingType:
+			toCancel = append(toCancel, op)
+		default:
+			toExpire = append(toExpire, op)
+		}
 	}
 
-	// 执行清理操作，必须完全成功
-	if err := forceDeleteAllBlockingOpsRequests(ctx, c, toDelete); err != nil {
-		return preflightResult{}, fmt.Errorf("failed to cleanup blocking operations: %w", err)
+	if len(toCancel) > 0 {
+		if err := cancelOpsRequests(ctx, c, toCancel); err != nil {
+			return preflightResult{}, fmt.Errorf("failed to cancel blocking scaling operations: %w", err)
+		}
+	}
+
+	if len(toExpire) > 0 {
+		if err := expireOpsRequests(ctx, c, toExpire); err != nil {
+			return preflightResult{}, fmt.Errorf("failed to expire blocking operations: %w", err)
+		}
 	}
 
 	return preflightResult{Decision: preflightCleanupAndProceed}, nil
@@ -150,7 +167,7 @@ func withPreflight(p preflight) createOption {
 }
 
 // CreateLifecycleOpsRequest 创建生命周期管理相关的 OpsRequest，供 Reconciler 使用
-// 生命周期操作（重启、停止、启动），将被设置为 force: true 和 enqueueOnForce: false 避免阻塞
+// 重启、停止，将被设置为 force: true 和 enqueueOnForce: false, 同时使用 priorityOps 移除正在阻塞的 OpsRequest，确保能够立即执行
 func CreateLifecycleOpsRequest(ctx context.Context,
 	c client.Client,
 	cluster *kbappsv1.Cluster,
@@ -165,7 +182,7 @@ func CreateLifecycleOpsRequest(ctx context.Context,
 		}
 	}
 
-	if _, err := createOpsRequest(ctx, c, cluster, opsType, opsSpecific); err != nil {
+	if _, err := createOpsRequest(ctx, c, cluster, opsType, opsSpecific, withPreflight(priorityOps{})); err != nil {
 		return err
 	}
 
@@ -537,46 +554,22 @@ func getAllNonFinalOpsRequests(ctx context.Context, c client.Client, namespace, 
 	return nonFinalOps, nil
 }
 
-// forceDeleteAllBlockingOpsRequests 强制删除所有阻塞的 OpsRequest
-// 要求删除操作完全成功，如果任何一个删除失败，整个函数返回错误
-func forceDeleteAllBlockingOpsRequests(ctx context.Context, c client.Client, toDelete []*opsv1alpha1.OpsRequest) error {
-	for _, ops := range toDelete {
-		if err := forcefullyDeleteOpsRequest(ctx, c, ops); err != nil {
-			return fmt.Errorf("failed to delete blocking opsrequest %s: %w", ops.Name, err)
+// cancelOpsRequests 取消所有给定的 OpsRequest
+func cancelOpsRequests(ctx context.Context, c client.Client, toCancel []*opsv1alpha1.OpsRequest) error {
+	for _, ops := range toCancel {
+		if err := setOpsRequestToCancel(ctx, c, ops); err != nil {
+			return fmt.Errorf("failed to cancel opsrequest %s: %w", ops.Name, err)
 		}
 	}
 
 	return nil
 }
 
-// forcefullyDeleteOpsRequest 强制删除 OpsRequest，
-// 先移除所有 finalizers，再删除资源，确保资源能够被彻底清理
-func forcefullyDeleteOpsRequest(ctx context.Context, c client.Client, ops *opsv1alpha1.OpsRequest) error {
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		current := &opsv1alpha1.OpsRequest{}
-		if err := c.Get(ctx, client.ObjectKeyFromObject(ops), current); err != nil {
-			if errors.IsNotFound(err) {
-				return nil
-			}
-			return err
-		}
-
-		if len(current.ObjectMeta.Finalizers) > 0 {
-			current.ObjectMeta.Finalizers = []string{}
-			if err := c.Update(ctx, current); err != nil {
-				return err
-			}
-		}
-
-		return c.Delete(ctx, current)
-	})
-}
-
-// cancelOpsRequests 取消所有给定的 OpsRequest
-func cancelOpsRequests(ctx context.Context, c client.Client, toCancel []*opsv1alpha1.OpsRequest) error {
-	for _, ops := range toCancel {
-		if err := setOpsRequestToCancel(ctx, c, ops); err != nil {
-			return fmt.Errorf("failed to cancel opsrequest %s: %w", ops.Name, err)
+// expireOpsRequests 将给定的 OpsRequest 的 timeoutSeconds 缩短到 1 秒，使其快速结束
+func expireOpsRequests(ctx context.Context, c client.Client, toExpire []*opsv1alpha1.OpsRequest) error {
+	for _, ops := range toExpire {
+		if err := shortenOpsRequestTimeout(ctx, c, ops); err != nil {
+			return fmt.Errorf("failed to shorten timeout for opsrequest %s: %w", ops.Name, err)
 		}
 	}
 
@@ -602,11 +595,42 @@ func setOpsRequestToCancel(ctx context.Context, c client.Client, ops *opsv1alpha
 		}
 
 		// 构造 Strategic Merge Patch，参考 associateToKubeBlocksComponent 的方式
-		patchData := fmt.Sprintf(`{
+		patchData := `{
 			"spec": {
 				"cancel": true
 			}
-		}`)
+		}`
+
+		return c.Patch(ctx, current, client.RawPatch(types.MergePatchType, []byte(patchData)))
+	})
+}
+
+// shortenOpsRequestTimeout 缩短 OpsRequest 的 timeoutSeconds 到 1 秒，使其快速结束
+//
+// <https://kubeblocks.io/docs/release-1_0_1/user_docs/references/api-reference/operations#operations.kubeblocks.io/v1alpha1.OpsRequest>
+func shortenOpsRequestTimeout(ctx context.Context, c client.Client, ops *opsv1alpha1.OpsRequest) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		current := &opsv1alpha1.OpsRequest{}
+		if err := c.Get(ctx, client.ObjectKeyFromObject(ops), current); err != nil {
+			if errors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+
+		if isOpsRequestNonBlocking(current) {
+			return nil
+		}
+
+		if current.Spec.TimeoutSeconds != nil && *current.Spec.TimeoutSeconds <= 1 {
+			return nil
+		}
+
+		patchData := `{
+			"spec": {
+				"timeoutSeconds": 1
+			}
+		}`
 
 		return c.Patch(ctx, current, client.RawPatch(types.MergePatchType, []byte(patchData)))
 	})
