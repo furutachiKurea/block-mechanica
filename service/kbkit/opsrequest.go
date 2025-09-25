@@ -16,6 +16,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -46,7 +47,8 @@ type preflight interface {
 	decide(ctx context.Context, c client.Client, ops *opsv1alpha1.OpsRequest) (preflightResult, error)
 }
 
-// uniqueOps 检查是否存在处在非终态的同类型同目标的 OpsRequest，
+// uniqueOps 检查是否存在会阻塞新 OpsRequest 的同类型 OpsRequest,
+// 如果存在阻塞操作，则跳过创建；否则允许创建
 type uniqueOps struct{}
 
 func (uniqueOps) decide(ctx context.Context, c client.Client, ops *opsv1alpha1.OpsRequest) (preflightResult, error) {
@@ -59,7 +61,7 @@ func (uniqueOps) decide(ctx context.Context, c client.Client, ops *opsv1alpha1.O
 	}
 
 	for _, ops := range opsList {
-		if !isOpsRequestInFinalPhase(&ops) {
+		if !isOpsRequestNonBlocking(&ops) {
 			return preflightResult{Decision: preflightSkip}, nil
 		}
 	}
@@ -70,6 +72,8 @@ func (uniqueOps) decide(ctx context.Context, c client.Client, ops *opsv1alpha1.O
 // priorityOps 优先级操作预检策略，用于处理高优先级操作（重启、停止、启动）,
 // 当使用此策略时，会主动清理所有阻塞的 OpsRequest，确保优先级操作能够立即执行,
 // 清理操作必须完全成功，否则整个创建过程将失败
+//
+// Deprecated: 改为将生命周期相关的 OpsRequest 设置为 force: true 和 enqueueOnForce: false 可避免阻塞
 type priorityOps struct{}
 
 func (priorityOps) decide(ctx context.Context, c client.Client, ops *opsv1alpha1.OpsRequest) (preflightResult, error) {
@@ -97,6 +101,43 @@ func (priorityOps) decide(ctx context.Context, c client.Client, ops *opsv1alpha1
 	return preflightResult{Decision: preflightCleanupAndProceed}, nil
 }
 
+// cancelOps 优雅取消操作预检策略，用于处理伸缩操作（水平伸缩、垂直伸缩）
+//
+// 取消将同类型会阻塞的 OpsRequest，然后允许创建新的伸缩操作
+type cancelOps struct{}
+
+func (cancelOps) decide(ctx context.Context, c client.Client, ops *opsv1alpha1.OpsRequest) (preflightResult, error) {
+	// 查找同类型的会阻塞的 OpsRequest
+	existingOps, err := getOpsRequestsByIndex(ctx, c, ops.Namespace, ops.Spec.ClusterName, ops.Spec.Type)
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			return preflightResult{}, fmt.Errorf("list opsrequests for preflight: %w", err)
+		}
+		return preflightResult{Decision: preflightProceed}, nil
+	}
+
+	// 收集需要优雅取消的 OpsRequest
+	var toCancel []*opsv1alpha1.OpsRequest
+	for i := range existingOps {
+		opsReq := &existingOps[i]
+		if !isOpsRequestNonBlocking(opsReq) {
+			toCancel = append(toCancel, opsReq)
+		}
+	}
+
+	// 如果没有需要取消的 OpsRequest，直接创建
+	if len(toCancel) == 0 {
+		return preflightResult{Decision: preflightProceed}, nil
+	}
+
+	// 取消 OpsRequest
+	if err := cancelOpsRequests(ctx, c, toCancel); err != nil {
+		return preflightResult{}, fmt.Errorf("failed to gracefully cancel existing operations: %w", err)
+	}
+
+	return preflightResult{Decision: preflightProceed}, nil
+}
+
 type createOpts struct {
 	preflight preflight
 }
@@ -109,7 +150,7 @@ func withPreflight(p preflight) createOption {
 }
 
 // CreateLifecycleOpsRequest 创建生命周期管理相关的 OpsRequest，供 Reconciler 使用
-// 生命周期操作（重启、停止、启动）使用 priorityOps 策略，会自动清理阻塞的操作
+// 生命周期操作（重启、停止、启动），将被设置为 force: true 和 enqueueOnForce: false 避免阻塞
 func CreateLifecycleOpsRequest(ctx context.Context,
 	c client.Client,
 	cluster *kbappsv1.Cluster,
@@ -124,8 +165,7 @@ func CreateLifecycleOpsRequest(ctx context.Context,
 		}
 	}
 
-	// 生命周期相关 Ops 使用 priorityOps option，避免阻塞
-	if _, err := createOpsRequest(ctx, c, cluster, opsType, opsSpecific, withPreflight(priorityOps{})); err != nil {
+	if _, err := createOpsRequest(ctx, c, cluster, opsType, opsSpecific); err != nil {
 		return err
 	}
 
@@ -134,7 +174,7 @@ func CreateLifecycleOpsRequest(ctx context.Context,
 
 // CreateBackupOpsRequest 为指定的 Cluster 创建备份 OpsRequest
 //
-// backupMethod 为备份方法，取决于数据库类型
+// backupMethod 为备份方法，不做任何额外预检，支持同时多次备份操作
 func CreateBackupOpsRequest(ctx context.Context,
 	c client.Client,
 	cluster *kbappsv1.Cluster,
@@ -154,6 +194,8 @@ func CreateBackupOpsRequest(ctx context.Context,
 }
 
 // CreateHorizontalScalingOpsRequest 为指定的 Cluster 创建水平伸缩 OpsRequest
+//
+// 将设置 enqueueOnForce: false 并将已经创建了的同类型 OpsRequest 设置为取消状态以避免阻塞
 func CreateHorizontalScalingOpsRequest(ctx context.Context,
 	c client.Client,
 	params model.HorizontalScalingOpsParams,
@@ -190,11 +232,13 @@ func CreateHorizontalScalingOpsRequest(ctx context.Context,
 		HorizontalScalingList: horizontalScalingList,
 	}
 
-	_, err := createOpsRequest(ctx, c, params.Cluster, opsv1alpha1.HorizontalScalingType, specificOps)
+	_, err := createOpsRequest(ctx, c, params.Cluster, opsv1alpha1.HorizontalScalingType, specificOps, withPreflight(cancelOps{}))
 	return err
 }
 
 // CreateVerticalScalingOpsRequest 为指定的 Cluster 创建垂直伸缩 OpsRequest
+//
+// 将设置 enqueueOnForce: false 并将已经创建了的同类型 OpsRequest 设置为取消状态以避免阻塞
 func CreateVerticalScalingOpsRequest(ctx context.Context,
 	c client.Client,
 	params model.VerticalScalingOpsParams,
@@ -222,11 +266,13 @@ func CreateVerticalScalingOpsRequest(ctx context.Context,
 		VerticalScalingList: verticalScalingList,
 	}
 
-	_, err := createOpsRequest(ctx, c, params.Cluster, opsv1alpha1.VerticalScalingType, specificOps)
+	_, err := createOpsRequest(ctx, c, params.Cluster, opsv1alpha1.VerticalScalingType, specificOps, withPreflight(cancelOps{}))
 	return err
 }
 
 // CreateVolumeExpansionOpsRequest 为指定的 Cluster 创建存储扩容 OpsRequest
+//
+// 使用 uniqueOps 预检策略，确保不会创建重复的存储扩容 OpsRequest(VolumeExpansion 不支持 cancel 的折中方案)
 func CreateVolumeExpansionOpsRequest(ctx context.Context,
 	c client.Client,
 	params model.VolumeExpansionOpsParams,
@@ -250,11 +296,13 @@ func CreateVolumeExpansionOpsRequest(ctx context.Context,
 		VolumeExpansionList: volumeExpansionList,
 	}
 
-	_, err := createOpsRequest(ctx, c, params.Cluster, opsv1alpha1.VolumeExpansionType, specificOps)
+	_, err := createOpsRequest(ctx, c, params.Cluster, opsv1alpha1.VolumeExpansionType, specificOps, withPreflight(uniqueOps{}))
 	return err
 }
 
 // CreateParameterChangeOpsRequest 创建参数变更 OpsRequest
+//
+// 不做任何额外预检，由 KubeBlocks 处理
 func CreateParameterChangeOpsRequest(ctx context.Context,
 	c client.Client,
 	cluster *kbappsv1.Cluster,
@@ -288,6 +336,8 @@ func CreateParameterChangeOpsRequest(ctx context.Context,
 //
 // 通过 backup 恢复的 Cluster 的名称格式为 {cluster.Name(去除四位后缀)}-restore-{四位随机后缀},
 // 串行恢复卷声明，在集群进行 running 状态后执行 PostReady
+//
+// 不需要做任何额外预检，由 KubeBlocks 处理
 func CreateRestoreOpsRequest(ctx context.Context,
 	c client.Client,
 	cluster *kbappsv1.Cluster,
@@ -320,13 +370,15 @@ func createOpsRequest(
 
 	ops := buildOpsRequest(cluster, opsType, specificOps)
 
-	res, err := options.preflight.decide(ctx, c, ops)
-	if err != nil {
-		return nil, fmt.Errorf("preflight check for opsruqest %s failed: %w", ops.Name, err)
-	}
+	if options.preflight != nil {
+		res, err := options.preflight.decide(ctx, c, ops)
+		if err != nil {
+			return nil, fmt.Errorf("preflight check for opsruqest %s failed: %w", ops.Name, err)
+		}
 
-	if res.Decision == preflightSkip {
-		return nil, ErrCreateOpsSkipped
+		if res.Decision == preflightSkip {
+			return nil, ErrCreateOpsSkipped
+		}
 	}
 
 	if err := c.Create(ctx, ops); err != nil {
@@ -377,6 +429,13 @@ func buildOpsRequest(
 		// Restore 中 ClusterName 为通过备份恢复的 Cluster 的名称，会创建一个新的 Cluster，
 		// 应当按照 {cluster.Name(去除后缀)}-restore-{四位随机后缀}" 的格式
 		ops.Spec.ClusterName = generateRestoredClusterName(cluster.Name)
+	case opsv1alpha1.VerticalScalingType, opsv1alpha1.HorizontalScalingType:
+		// 对于伸缩操作，应当绕过系统预检查
+		ops.Spec.Force = true
+	case opsv1alpha1.RestartType, opsv1alpha1.StopType:
+		// 对于生命周期操作，应当绕过系统预检查并且不再排队(启动不支持 Force)
+		ops.Spec.Force = true
+		ops.Spec.EnqueueOnForce = false
 	}
 
 	return ops
@@ -389,14 +448,7 @@ func applyCreateOptions(opts ...createOption) *createOpts {
 			f(o)
 		}
 	}
-	applyDefaultCreateOptions(o)
 	return o
-}
-
-func applyDefaultCreateOptions(o *createOpts) {
-	if o.preflight == nil {
-		o.preflight = uniqueOps{}
-	}
 }
 
 // makeOpsRequestName 生成 OpsRequest 名称
@@ -428,13 +480,14 @@ func getOpsRequestsByIndex(ctx context.Context, c client.Client, namespace, clus
 	return list.Items, nil
 }
 
-// isOpsRequestInFinalPhase 检查操作请求是否处于终态
-func isOpsRequestInFinalPhase(ops *opsv1alpha1.OpsRequest) bool {
+// isOpsRequestNonBlocking 检查 OpsRequest 是否会阻塞其他 OpsRequest
+func isOpsRequestNonBlocking(ops *opsv1alpha1.OpsRequest) bool {
 	phase := ops.Status.Phase
 	return phase == opsv1alpha1.OpsSucceedPhase ||
 		phase == opsv1alpha1.OpsCancelledPhase ||
 		phase == opsv1alpha1.OpsFailedPhase ||
-		phase == opsv1alpha1.OpsAbortedPhase
+		phase == opsv1alpha1.OpsAbortedPhase ||
+		phase == opsv1alpha1.OpsCancellingPhase
 }
 
 // generateRestoredClusterName 生成 restore cluster 的名称
@@ -476,7 +529,7 @@ func getAllNonFinalOpsRequests(ctx context.Context, c client.Client, namespace, 
 
 	var nonFinalOps []opsv1alpha1.OpsRequest
 	for _, ops := range list.Items {
-		if !isOpsRequestInFinalPhase(&ops) {
+		if !isOpsRequestNonBlocking(&ops) {
 			nonFinalOps = append(nonFinalOps, ops)
 		}
 	}
@@ -516,5 +569,45 @@ func forcefullyDeleteOpsRequest(ctx context.Context, c client.Client, ops *opsv1
 		}
 
 		return c.Delete(ctx, current)
+	})
+}
+
+// cancelOpsRequests 取消所有给定的 OpsRequest
+func cancelOpsRequests(ctx context.Context, c client.Client, toCancel []*opsv1alpha1.OpsRequest) error {
+	for _, ops := range toCancel {
+		if err := setOpsRequestToCancel(ctx, c, ops); err != nil {
+			return fmt.Errorf("failed to cancel opsrequest %s: %w", ops.Name, err)
+		}
+	}
+
+	return nil
+}
+
+// setOpsRequestToCancel 设置单个 OpsRequest 为 cancel: true
+//
+// <https://kubeblocks.io/docs/release-1_0_1/user_docs/references/api-reference/operations#operations.kubeblocks.io/v1alpha1.OpsRequest>
+func setOpsRequestToCancel(ctx context.Context, c client.Client, ops *opsv1alpha1.OpsRequest) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		current := &opsv1alpha1.OpsRequest{}
+		if err := c.Get(ctx, client.ObjectKeyFromObject(ops), current); err != nil {
+			if errors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+
+		// 检查操作是否已经处于终态或已经被取消
+		if isOpsRequestNonBlocking(current) || current.Spec.Cancel {
+			return nil
+		}
+
+		// 构造 Strategic Merge Patch，参考 associateToKubeBlocksComponent 的方式
+		patchData := fmt.Sprintf(`{
+			"spec": {
+				"cancel": true
+			}
+		}`)
+
+		return c.Patch(ctx, current, client.RawPatch(types.MergePatchType, []byte(patchData)))
 	})
 }
