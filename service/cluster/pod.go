@@ -336,4 +336,3 @@ func formatAge(eventTime metav1.Time) string {
 		return fmt.Sprintf("%.0fd", duration.Hours()/24)
 	}
 }
-

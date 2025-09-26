@@ -12,6 +12,8 @@ import (
 
 	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
 	opsv1alpha1 "github.com/apecloud/kubeblocks/apis/operations/v1alpha1"
+	"golang.org/x/sync/errgroup"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -86,6 +88,14 @@ func (s *Service) deleteCluster(ctx context.Context, serviceID string, isCancle 
 		log.String("current_termination_policy", string(cluster.Spec.TerminationPolicy)),
 		log.Bool("wipe_out", isCancle))
 
+	// 清理 Cluster 的 OpsRequest
+	if err := s.cleanupClusterOpsRequests(ctx, cluster); err != nil {
+		log.Warn("Failed to cleanup OpsRequests, proceeding with cluster deletion",
+			log.String("service_id", serviceID),
+			log.String("cluster_name", cluster.Name),
+			log.Err(err))
+	}
+
 	if isCancle && cluster.Spec.TerminationPolicy != kbappsv1.WipeOut {
 		log.Info("Updating TerminationPolicy to WipeOut before deletion",
 			log.String("cluster_name", cluster.Name),
@@ -142,4 +152,73 @@ func (s *Service) ManageClustersLifecycle(ctx context.Context, operation opsv1al
 		}
 	}
 	return manageResult
+}
+
+// cleanupClusterOpsRequests 清理指定 Cluster 的所有 OpsRequest
+func (s *Service) cleanupClusterOpsRequests(ctx context.Context, cluster *kbappsv1.Cluster) error {
+	// 获取并清理所有非终态 OpsRequest，使其进入终态
+	blockingOps, err := kbkit.GetAllNonFinalOpsRequests(ctx, s.client, cluster.Namespace, cluster.Name)
+	if err != nil {
+		return fmt.Errorf("get existing opsrequests: %w", err)
+	}
+
+	if len(blockingOps) > 0 {
+		log.Debug("Found blocking OpsRequests, initiating cleanup",
+			log.String("cluster", cluster.Name),
+			log.Int("blocking_count", len(blockingOps)))
+
+		if err := kbkit.CleanupBlockingOps(ctx, s.client, blockingOps); err != nil {
+			return fmt.Errorf("cleanup blocking ops: %w", err)
+		}
+	}
+
+	// 获取并删除所有 OpsRequest
+	allOps, err := kbkit.GetAllOpsRequestsByCluster(ctx, s.client, cluster.Namespace, cluster.Name)
+	if err != nil {
+		return fmt.Errorf("get all opsrequests: %w", err)
+	}
+
+	if len(allOps) == 0 {
+		log.Debug("No OpsRequests found for cluster",
+			log.String("cluster", cluster.Name))
+		return nil
+	}
+
+	log.Info("Deleting all OpsRequests for complete cleanup",
+		log.String("cluster", cluster.Name),
+		log.Int("total_count", len(allOps)))
+
+	// 并发删除所有 OpsRequest，避免孤儿资源
+	if err := s.deleteAllOpsRequestsConcurrently(ctx, allOps); err != nil {
+		return fmt.Errorf("delete all ops: %w", err)
+	}
+
+	log.Info("Successfully cleaned up all OpsRequests",
+		log.String("cluster", cluster.Name),
+		log.Int("deleted_count", len(allOps)))
+
+	return nil
+}
+
+// deleteAllOpsRequestsConcurrently 并发删除所有 OpsRequest
+func (s *Service) deleteAllOpsRequestsConcurrently(ctx context.Context, allOps []opsv1alpha1.OpsRequest) error {
+	if len(allOps) == 0 {
+		return nil
+	}
+
+	group, gctx := errgroup.WithContext(ctx)
+	for i := range allOps {
+		op := &allOps[i]
+		group.Go(func() error {
+			if err := s.client.Delete(gctx, op); err != nil {
+				if apierrors.IsNotFound(err) {
+					return nil
+				}
+				return fmt.Errorf("failed to delete opsrequest %s: %w", op.Name, err)
+			}
+			return nil
+		})
+	}
+
+	return group.Wait()
 }

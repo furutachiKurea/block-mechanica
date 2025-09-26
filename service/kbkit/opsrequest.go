@@ -13,6 +13,7 @@ import (
 	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
 	opsv1alpha1 "github.com/apecloud/kubeblocks/apis/operations/v1alpha1"
 	"github.com/apecloud/kubeblocks/pkg/constant"
+	"golang.org/x/sync/errgroup"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -27,6 +28,9 @@ var (
 	opsPreConditionDeadline int32 = 5 * 60
 
 	defaultBackupDeletionPolicy = "Delete"
+
+	// opsCleanupConcurrency 控制并发清理 OpsRequest 时的最大并发数
+	opsCleanupConcurrency = 4
 )
 
 const (
@@ -76,7 +80,7 @@ type priorityOps struct{}
 
 func (priorityOps) decide(ctx context.Context, c client.Client, ops *opsv1alpha1.OpsRequest) (preflightResult, error) {
 	// 查询集群的所有非终态 OpsRequest
-	blockingOps, err := getAllNonFinalOpsRequests(ctx, c, ops.Namespace, ops.Spec.ClusterName)
+	blockingOps, err := GetAllNonFinalOpsRequests(ctx, c, ops.Namespace, ops.Spec.ClusterName)
 	if err != nil {
 		return preflightResult{}, fmt.Errorf("get existing opsrequests: %w", err)
 	}
@@ -86,33 +90,8 @@ func (priorityOps) decide(ctx context.Context, c client.Client, ops *opsv1alpha1
 		return preflightResult{Decision: preflightProceed}, nil
 	}
 
-	var (
-		// 通过超时结束
-		toExpire []*opsv1alpha1.OpsRequest
-		// 通过 cancel 结束（仅用于 VerticalScaling 和 HorizontalScaling）
-		toCancel []*opsv1alpha1.OpsRequest
-	)
-
-	for i := range blockingOps {
-		op := &blockingOps[i]
-		switch op.Spec.Type {
-		case opsv1alpha1.HorizontalScalingType, opsv1alpha1.VerticalScalingType:
-			toCancel = append(toCancel, op)
-		default:
-			toExpire = append(toExpire, op)
-		}
-	}
-
-	if len(toCancel) > 0 {
-		if err := cancelOpsRequests(ctx, c, toCancel); err != nil {
-			return preflightResult{}, fmt.Errorf("failed to cancel blocking scaling operations: %w", err)
-		}
-	}
-
-	if len(toExpire) > 0 {
-		if err := expireOpsRequests(ctx, c, toExpire); err != nil {
-			return preflightResult{}, fmt.Errorf("failed to expire blocking operations: %w", err)
-		}
+	if err := CleanupBlockingOps(ctx, c, blockingOps); err != nil {
+		return preflightResult{}, err
 	}
 
 	return preflightResult{Decision: preflightCleanupAndProceed}, nil
@@ -530,9 +509,9 @@ func generateRestoredClusterName(originalClusterName string) string {
 	return fmt.Sprintf("%s-restore-%s", baseName, hashSuffix)
 }
 
-// getAllNonFinalOpsRequests 获取指定集群的所有非终态 OpsRequest
+// GetAllNonFinalOpsRequests 获取指定集群的所有非终态 OpsRequest
 // 不限制操作类型，返回所有可能阻塞的 OpsRequest
-func getAllNonFinalOpsRequests(ctx context.Context, c client.Client, namespace, clusterName string) ([]opsv1alpha1.OpsRequest, error) {
+func GetAllNonFinalOpsRequests(ctx context.Context, c client.Client, namespace, clusterName string) ([]opsv1alpha1.OpsRequest, error) {
 	var list opsv1alpha1.OpsRequestList
 
 	if err := c.List(ctx, &list,
@@ -554,26 +533,96 @@ func getAllNonFinalOpsRequests(ctx context.Context, c client.Client, namespace, 
 	return nonFinalOps, nil
 }
 
-// cancelOpsRequests 取消所有给定的 OpsRequest
-func cancelOpsRequests(ctx context.Context, c client.Client, toCancel []*opsv1alpha1.OpsRequest) error {
-	for _, ops := range toCancel {
-		if err := setOpsRequestToCancel(ctx, c, ops); err != nil {
-			return fmt.Errorf("failed to cancel opsrequest %s: %w", ops.Name, err)
+// classifyBlockingOps 按照是否支持 cancel 将阻塞的 OpsRequest 分成两组
+// 横向/纵向伸缩 OpsRequest 支持 cancel，其他类型需要通过 expire 处理
+func classifyBlockingOps(blockingOps []opsv1alpha1.OpsRequest) (toCancel, toExpire []*opsv1alpha1.OpsRequest) {
+
+	for i := range blockingOps {
+		op := &blockingOps[i]
+		switch op.Spec.Type {
+		case opsv1alpha1.HorizontalScalingType, opsv1alpha1.VerticalScalingType:
+			toCancel = append(toCancel, op)
+		default:
+			toExpire = append(toExpire, op)
 		}
 	}
 
-	return nil
+	return toCancel, toExpire
+}
+
+// CleanupBlockingOps 清理阻塞的 OpsRequest，先取消可优雅处理的，再缩短其余超时
+func CleanupBlockingOps(
+	ctx context.Context,
+	c client.Client,
+	blockingOps []opsv1alpha1.OpsRequest,
+) error {
+	toCancel, toExpire := classifyBlockingOps(blockingOps)
+
+	group, gctx := errgroup.WithContext(ctx)
+
+	if len(toCancel) > 0 {
+		group.Go(func() error {
+			if err := cancelOpsRequests(gctx, c, toCancel); err != nil {
+				return fmt.Errorf("cancel blocking scaling operations: %w", err)
+			}
+			return nil
+		})
+	}
+
+	if len(toExpire) > 0 {
+		group.Go(func() error {
+			if err := expireOpsRequests(gctx, c, toExpire); err != nil {
+				return fmt.Errorf("expire blocking operations: %w", err)
+			}
+			return nil
+		})
+	}
+
+	return group.Wait()
+}
+
+// cancelOpsRequests 取消所有给定的 OpsRequest
+func cancelOpsRequests(ctx context.Context, c client.Client, toCancel []*opsv1alpha1.OpsRequest) error {
+	if len(toCancel) == 0 {
+		return nil
+	}
+
+	group, gctx := errgroup.WithContext(ctx)
+	group.SetLimit(opsCleanupConcurrency)
+
+	for i := range toCancel {
+		op := toCancel[i]
+		group.Go(func() error {
+			if err := setOpsRequestToCancel(gctx, c, op); err != nil {
+				return fmt.Errorf("failed to cancel opsrequest %s: %w", op.Name, err)
+			}
+			return nil
+		})
+	}
+
+	return group.Wait()
 }
 
 // expireOpsRequests 将给定的 OpsRequest 的 timeoutSeconds 缩短到 1 秒，使其快速结束
 func expireOpsRequests(ctx context.Context, c client.Client, toExpire []*opsv1alpha1.OpsRequest) error {
-	for _, ops := range toExpire {
-		if err := shortenOpsRequestTimeout(ctx, c, ops); err != nil {
-			return fmt.Errorf("failed to shorten timeout for opsrequest %s: %w", ops.Name, err)
-		}
+	if len(toExpire) == 0 {
+		return nil
 	}
 
-	return nil
+	group, gctx := errgroup.WithContext(ctx)
+	group.SetLimit(opsCleanupConcurrency)
+
+	for i := range toExpire {
+		op := toExpire[i]
+		group.Go(func() error {
+			if err := shortenOpsRequestTimeout(gctx, c, op); err != nil {
+				return fmt.Errorf("failed to shorten timeout for opsrequest %s: %w", op.Name, err)
+			}
+			return nil
+		})
+	}
+
+	return group.Wait()
 }
 
 // setOpsRequestToCancel 设置单个 OpsRequest 为 cancel: true

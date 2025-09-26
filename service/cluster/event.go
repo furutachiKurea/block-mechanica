@@ -11,10 +11,7 @@ import (
 	"github.com/furutachiKurea/block-mechanica/service/kbkit"
 
 	opsv1alpha1 "github.com/apecloud/kubeblocks/apis/operations/v1alpha1"
-	"github.com/apecloud/kubeblocks/pkg/constant"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // GetClusterEvents 获取指定 KubeBlocks Cluster 的运维事件列表
@@ -28,20 +25,14 @@ func (s *Service) GetClusterEvents(ctx context.Context, serviceID string, pagina
 		return nil, fmt.Errorf("get cluster by service_id %s: %w", serviceID, err)
 	}
 
-	var opsList opsv1alpha1.OpsRequestList
-	selector := labels.SelectorFromSet(labels.Set{
-		constant.AppInstanceLabelKey: cluster.Name,
-	})
-	if err := s.client.List(ctx, &opsList, &client.ListOptions{
-		Namespace:     cluster.Namespace,
-		LabelSelector: selector,
-	}); err != nil {
-		return nil, fmt.Errorf("list opsrequests for cluster %s: %w", cluster.Name, err)
+	allOps, err := kbkit.GetAllOpsRequestsByCluster(ctx, s.client, cluster.Namespace, cluster.Name)
+	if err != nil {
+		return nil, fmt.Errorf("get all opsrequests for cluster %s: %w", cluster.Name, err)
 	}
 
 	// 转换所有 OpsRequest 为 EventItem
-	events := make([]model.EventItem, 0, len(opsList.Items))
-	for _, ops := range opsList.Items {
+	events := make([]model.EventItem, 0, len(allOps))
+	for _, ops := range allOps {
 		event := s.convertOpsRequestToEventItem(&ops)
 		// 只保留 block mechanica 支持的 OpsType
 		if event.OpsType == "" {

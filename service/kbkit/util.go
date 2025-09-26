@@ -8,6 +8,8 @@ import (
 	"github.com/furutachiKurea/block-mechanica/service/registry"
 
 	kbappsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
+	opsv1alpha1 "github.com/apecloud/kubeblocks/apis/operations/v1alpha1"
+	"github.com/apecloud/kubeblocks/pkg/constant"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -70,4 +72,21 @@ func IsSupportBackup(addon string) bool {
 		return false
 	}
 	return adapter.Coordinator.GetBackupMethod() != ""
+}
+
+// GetAllOpsRequestsByCluster 获取指定集群的所有 OpsRequest
+// 包括所有状态的 OpsRequest，用于彻底清理资源或审计目的
+func GetAllOpsRequestsByCluster(ctx context.Context, c client.Client, namespace, clusterName string) ([]opsv1alpha1.OpsRequest, error) {
+	var list opsv1alpha1.OpsRequestList
+
+	if err := c.List(ctx, &list,
+		client.InNamespace(namespace),
+		client.MatchingLabels(map[string]string{
+			constant.AppInstanceLabelKey: clusterName,
+		}),
+	); err != nil {
+		return nil, fmt.Errorf("list all opsrequests for cluster %s/%s: %w", namespace, clusterName, err)
+	}
+
+	return list.Items, nil
 }
