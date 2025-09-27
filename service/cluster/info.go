@@ -142,8 +142,11 @@ func (s *Service) extractResourceInfo(component kbappsv1.ClusterComponentSpec) m
 	memoryBytes := component.Resources.Limits.Memory().Value()
 	memoryMiB := memoryBytes / MiB
 
-	storageQty := component.VolumeClaimTemplates[0].Spec.Resources.Requests[corev1.ResourceStorage]
-	storageGiB := storageQty.Value() / GiB
+	var storageGiB int64
+	if len(component.VolumeClaimTemplates) > 0 {
+		storageQty := component.VolumeClaimTemplates[0].Spec.Resources.Requests[corev1.ResourceStorage]
+		storageGiB = storageQty.Value() / GiB
+	}
 
 	return model.ClusterResourceStatus{
 		CPUMilli:  cpuMilli,
