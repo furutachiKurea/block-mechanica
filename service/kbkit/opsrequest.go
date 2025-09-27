@@ -140,6 +140,13 @@ type createOpts struct {
 
 type createOption func(*createOpts)
 
+func validateCluster(cluster *kbappsv1.Cluster) error {
+	if cluster == nil {
+		return ErrClusterRequired
+	}
+	return nil
+}
+
 // withPreflight 自定义预检策略
 func withPreflight(p preflight) createOption {
 	return func(o *createOpts) { o.preflight = p }
@@ -152,6 +159,10 @@ func CreateLifecycleOpsRequest(ctx context.Context,
 	cluster *kbappsv1.Cluster,
 	opsType opsv1alpha1.OpsType,
 ) error {
+	if err := validateCluster(cluster); err != nil {
+		return err
+	}
+
 	opsSpecific := opsv1alpha1.SpecificOpsRequest{}
 	if opsType == opsv1alpha1.RestartType {
 		opsSpecific.RestartList = []opsv1alpha1.ComponentOps{
@@ -176,6 +187,9 @@ func CreateBackupOpsRequest(ctx context.Context,
 	cluster *kbappsv1.Cluster,
 	backupMethod string,
 ) error {
+	if err := validateCluster(cluster); err != nil {
+		return err
+	}
 
 	specificOps := opsv1alpha1.SpecificOpsRequest{
 		Backup: &opsv1alpha1.Backup{
@@ -196,6 +210,9 @@ func CreateHorizontalScalingOpsRequest(ctx context.Context,
 	c client.Client,
 	params model.HorizontalScalingOpsParams,
 ) error {
+	if err := validateCluster(params.Cluster); err != nil {
+		return err
+	}
 	var horizontalScalingList []opsv1alpha1.HorizontalScaling
 
 	// 遍历所有组件，为每个组件创建对应的伸缩配置
@@ -239,6 +256,9 @@ func CreateVerticalScalingOpsRequest(ctx context.Context,
 	c client.Client,
 	params model.VerticalScalingOpsParams,
 ) error {
+	if err := validateCluster(params.Cluster); err != nil {
+		return err
+	}
 	var verticalScalingList []opsv1alpha1.VerticalScaling
 
 	// 遍历所有组件，为每个组件创建对应的资源配置
@@ -273,6 +293,9 @@ func CreateVolumeExpansionOpsRequest(ctx context.Context,
 	c client.Client,
 	params model.VolumeExpansionOpsParams,
 ) error {
+	if err := validateCluster(params.Cluster); err != nil {
+		return err
+	}
 	var volumeExpansionList []opsv1alpha1.VolumeExpansion
 
 	// 遍历所有组件，为每个组件创建对应的存储扩容配置
@@ -304,6 +327,9 @@ func CreateParameterChangeOpsRequest(ctx context.Context,
 	cluster *kbappsv1.Cluster,
 	parameters []model.ParameterEntry,
 ) error {
+	if err := validateCluster(cluster); err != nil {
+		return err
+	}
 	specificOps := opsv1alpha1.SpecificOpsRequest{
 		Reconfigures: []opsv1alpha1.Reconfigure{
 			{
@@ -339,6 +365,9 @@ func CreateRestoreOpsRequest(ctx context.Context,
 	cluster *kbappsv1.Cluster,
 	backupName string,
 ) (*opsv1alpha1.OpsRequest, error) {
+	if err := validateCluster(cluster); err != nil {
+		return nil, err
+	}
 	specificOps := opsv1alpha1.SpecificOpsRequest{
 		Restore: &opsv1alpha1.Restore{
 			BackupName:                        backupName,
@@ -362,6 +391,9 @@ func createOpsRequest(
 	specificOps opsv1alpha1.SpecificOpsRequest,
 	opts ...createOption,
 ) (*opsv1alpha1.OpsRequest, error) {
+	if err := validateCluster(cluster); err != nil {
+		return nil, err
+	}
 	options := applyCreateOptions(opts...)
 
 	ops := buildOpsRequest(cluster, opsType, specificOps)

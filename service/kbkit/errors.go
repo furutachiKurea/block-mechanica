@@ -14,6 +14,9 @@ var (
 
 	// ErrCreateOpsSkipped 表示创建 OpsRequest 因预检检查而被跳过
 	ErrCreateOpsSkipped = errors.New("operation skipped by preflight check")
+
+	// ErrClusterRequired 表示集群信息缺失
+	ErrClusterRequired = errors.New("cluster is required")
 )
 
 // 参数变更操作中错误常量
