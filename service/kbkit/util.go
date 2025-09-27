@@ -61,7 +61,11 @@ func Paginate[T any](items []T, page, pageSize int) []T {
 	return items[offset:end:end]
 }
 
+// ClusterType 获取 Cluster 对应的数据库类型
 func ClusterType(cluster *kbappsv1.Cluster) string {
+	if cluster == nil {
+		return ""
+	}
 	return cluster.Spec.ClusterDef
 }
 

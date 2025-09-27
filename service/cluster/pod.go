@@ -68,37 +68,37 @@ func (s *Service) GetPodDetail(ctx context.Context, serviceID string, podName st
 			if v := instanceSet.Annotations["app.kubernetes.io/component"]; v != "" {
 				componentDef = v
 			}
+			if v := instanceSet.Annotations["apps.kubeblocks.io/service-version"]; v != "" {
+				version = v
+			}
 		}
 	}
 
-	// 通过 componentSpec 获取 version
+	if componentName == "" {
+		return nil, fmt.Errorf("pod %s has no component name", podName)
+	}
+
+	var spec *kbappsv1.ClusterComponentSpec
 	if componentName != "" {
-		if spec := findComponentSpec(cluster, componentName); spec != nil {
-			if componentDef == "" {
-				componentDef = spec.ComponentDef
-			}
-			if spec.ComponentDef != "" {
-				version = spec.ComponentDef
-			} else if spec.ServiceVersion != "" {
-				version = spec.ServiceVersion
-			}
+		spec = findComponentSpec(cluster, componentName)
+	}
+	if spec == nil {
+		return nil, fmt.Errorf("component spec %s not found in cluster %s", componentName, cluster.Name)
+	}
+
+	if componentDef == "" {
+		componentDef = spec.ComponentDef
+	}
+	if version == "" {
+		if spec.ComponentDef != "" {
+			version = spec.ComponentDef
+		} else if spec.ServiceVersion != "" {
+			version = spec.ServiceVersion
 		}
 	}
 
-	if version == "" && componentDef != "" {
-		version = componentDef
-	}
-
-	if componentDef == "" && len(cluster.Spec.ComponentSpecs) > 0 {
-		fallback := cluster.Spec.ComponentSpecs[0]
-		componentDef = fallback.ComponentDef
-		if version == "" {
-			if fallback.ComponentDef != "" {
-				version = fallback.ComponentDef
-			} else {
-				version = fallback.ServiceVersion
-			}
-		}
+	if componentDef == "" {
+		return nil, fmt.Errorf("component definition missing for component %s", componentName)
 	}
 
 	status := buildPodDetailStatus(*pod)
