@@ -24,7 +24,7 @@
 !*.sh
 
 # Test files
-*_test.go
+!*_test.go
 
 # Folders
 scripts/**
