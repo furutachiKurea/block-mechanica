@@ -67,19 +67,6 @@ func (s *Service) GetAddons(ctx context.Context) ([]*model.Addon, error) {
 	}), nil
 }
 
-// CheckKubeBlocksComponent 依据 RBDService 判定该 Rainbond 组件是否为 KubeBlocks Component，如果是，则还返回 KubeBlocks Component 对应的 Cluster 的数据库类型
-//
-// 如果给定的 req.RBDService.ID 能够匹配到一个 KubeBlocks Cluster，则说明该 Rainbond 组件为 KubeBlocks Component
-func (s *Service) CheckKubeBlocksComponent(ctx context.Context, rbd model.RBDService) (*model.KubeBlocksComponentInfo, error) {
-	cluster, err := kbkit.GetClusterByServiceID(ctx, s.client, rbd.ServiceID)
-	info := &model.KubeBlocksComponentInfo{IsKubeBlocksComponent: err == nil}
-	if err == nil {
-		info.DatabaseType = cluster.Spec.ClusterDef
-	}
-
-	return info, nil
-}
-
 // GetClusterPort 返回指定数据库在 KubeBlocks service 中的目标端口
 func (s *Service) GetClusterPort(ctx context.Context, serviceID string) int {
 	cluster, err := kbkit.GetClusterByServiceID(ctx, s.client, serviceID)

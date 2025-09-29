@@ -16,7 +16,6 @@ func setupRouter(v1 *echo.Group, h *handler.Handler) {
 	v1.GET("/addons", h.GetAddons)
 	v1.GET("/storageclasses", h.GetStorageClasses)
 	v1.GET("/backuprepos", h.GetBackupRepos)
-	v1.GET("/kubeblocks-component/:service-id", h.CheckKubeBlocksComponent)
 
 	cluster := v1.Group("/clusters")
 	{

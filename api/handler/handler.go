@@ -176,29 +176,6 @@ func (h *Handler) GetConnectInfo(c echo.Context) error {
 	return res.ReturnSuccess(c, response)
 }
 
-// CheckKubeBlocksComponent 通过给定的 service-id 判断该 Rainbond 组件是否为 KubeBlocks Component 并返回相关信息
-//
-// GET /v1/kubeblocks-component/:service-id
-func (h *Handler) CheckKubeBlocksComponent(c echo.Context) error {
-	ctx := c.Request().Context()
-
-	log.Debug("CheckKubeBlocksComponent")
-
-	var rbdService model.RBDService
-	if err := c.Bind(&rbdService); err != nil {
-		return res.BadRequest(fmt.Errorf("bind request: %w", err))
-	}
-
-	log.Debug("bind request", log.Any("rbdService", rbdService))
-
-	componentInfo, err := h.svc.CheckKubeBlocksComponent(ctx, rbdService)
-	if err != nil {
-		return res.InternalError(fmt.Errorf("check KubeBlocks component info: %w", err))
-	}
-
-	return res.ReturnSuccess(c, componentInfo)
-}
-
 // GetClusterDetail 获取 KubeBlocks 数据库集群的详细信息
 //
 // GET /v1/clusters/:service-id

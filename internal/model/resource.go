@@ -18,12 +18,6 @@ type Addon struct {
 	IsSupportBackup bool     `json:"support_backup"`
 }
 
-// KubeBlocksComponentInfo 包含 KubeBlocks Component 的详细信息
-type KubeBlocksComponentInfo struct {
-	IsKubeBlocksComponent bool   `json:"isKubeBlocksComponent"`
-	DatabaseType          string `json:"databaseType,omitempty"`
-}
-
 // ParameterSets 保存静态/动态/不可变参数集合。
 type ParameterSets struct {
 	Static    map[string]bool
