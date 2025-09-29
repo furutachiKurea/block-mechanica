@@ -1,66 +1,54 @@
-# Block Mechanica
+# [Block Mechanica](https://github.com/furutachiKurea/block-mechanica)
 
-Block Mechanica 是一个轻量化的 Kubernetes 服务，使用 Echo 和 controller-runtime 实现，用于对 KubeBlocks Cluster 进行运维操作，协助 Rainbond 实现 KubeBlocks 的集成
+```txt
+    ____  __           __      __  ___          __                _           
+   / __ )/ /___  _____/ /__   /  |/  /__  _____/ /_  ____ _____  (_)________ _
+  / __  / / __ \/ ___/ //_/  / /|_/ / _ \/ ___/ __ \/ __ `/ __ \/ / ___/ __ `/
+ / /_/ / / /_/ / /__/ ,<    / /  / /  __/ /__/ / / / /_/ / / / / / /__/ /_/ / 
+/_____/_/\____/\___/_/|_|  /_/  /_/\___/\___/_/ /_/\__,_/_/ /_/_/\___/\__,_/  
+```
+
+Block Mechanica 是一个轻量化的 Kubernetes 服务，通过使用 Echo 编写的 API 服务实现 KubeBlocks 与 Rainbond 的集成
 
 ## How does it work?
 
-### 架构
+[如何实现 Rainbond 与 KubeBlocks 的集成](./doc/design_document.md)
 
-Block Mechanica 由两个 controller 和一个 API 服务组成，其中：
+## 如何部署
 
-- `kubeblocks_component_controller` 用于监听 KubeBlocks Component，确保 KubeBlocks Component 使用了正确的转发设置，能够将来自其他 Rainbond 组件的连接转发给 KubeBlocks Cluster Service
-- `cluster_controller` 用于监听 KubeBlocks Cluster，并根据 KubeBlocks Component 的状态，通过 OpsRequest 同步 Cluster 的状态
-- `api_server` 向 Rainbond 提供 API 服务，用于处理 Rainbond 对 KubeBlocks 的各类操作
+[在 Rainbond 中使用 KubeBlocks](./doc/Use_KubeBlocks_in_Rainbond.md)
 
-### KubeBlocks Component 和 KubeBlocks Cluster 的关联是如何实现的
+## 目录结构
 
-KubeBlocks Cluster 在创建的时候会被添加上与 KubeBlocks Component 相同的  service_id 标签。每个 KubeBlocks Component 的 service_id 都唯一对应一个 KubeBlocks Cluster
-
-### Work with Rainbond
-
-```mermaid
-flowchart TD
-    rbd-app-ui["rbd-app-ui"]
-    rbd-api["rbd-api"]
-    block-mechanica["block-mechanica"]
-    k8s-api["Kubernetes API"]
-    
-    rbd-app-ui -->|HTTP 请求| rbd-api
-    rbd-api -->|转发请求| block-mechanica
-    block-mechanica --> k8s-api
-```
-
-### 专有名词
-
-- KubeBlocks Component: 指在 Rainbond 中用于转发数据库连接给 KubeBlocks 的 Rainbond 组件(Deployment)，目前使用 socat 实现
-
-## 项目结构
-
-```text
+```txt
 📁 ./
 ├── 📁 api/
 │   ├── 📁 handler/
 │   ├── 📁 req/
 │   └── 📁 res/
-├── 📁 controller/
+├── 📁 deploy/
+│   ├── 📁 docker/
+│   └── 📁 k8s/
+├── 📁 doc/
+│   └── 📁 assets/
 ├── 📁 internal/
 │   ├── 📁 config/
 │   ├── 📁 index/
+│   ├── 📁 k8s/
 │   ├── 📁 log/
 │   ├── 📁 model/
 │   ├── 📁 mono/
 │   └── 📁 testutil/
-├── 📁 k8s/
 └── 📁 service/
     ├── 📁 adapter/
-    ├── 📁 backuper/
+    ├── 📁 backup/
     ├── 📁 builder/
-    └── 📁 coordinator/
+    ├── 📁 cluster/
+    ├── 📁 coordinator/
+    ├── 📁 kbkit/
+    ├── 📁 registry/
+    └── 📁 resource/
 ```
-
-## 如何部署
-
-使用 `make image` 命令构建镜像，然后推送到你的镜像仓库，修改 [deploy.yaml](./deploy/k8s/deploy.yaml) 中的镜像地址，运行 `make deploy`
 
 ## Make
 
@@ -76,13 +64,13 @@ flowchart TD
   make image TAG=v1.0.0
   ```
 
-- 构建可执行文件（输出到 bin/block_mechanica）
+- 构建可执行文件到 bin/block_mechanica
 
   ```sh
   make build
   ```
 
-- 运行所有测试（递归所有目录）
+- 运行所有测试
 
   ```sh
   make test
@@ -93,3 +81,13 @@ flowchart TD
   ```sh
   make test TESTDIR=./service/...
   ```
+
+## Contributing
+
+[开发仓库](https://github.com/furutachiKurea/block-mechanica)
+
+欢迎提交 PR 和 Issue，感谢您的贡献！
+
+## License
+
+[AGPL-3.0](./LICENSE)

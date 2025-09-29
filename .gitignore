@@ -28,6 +28,7 @@
 
 # Folders
 scripts/**
+!doc/**
 
 # ...even if they are in subdirectories
 !*/
