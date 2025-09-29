@@ -87,7 +87,7 @@ KubeBlocks 中的运维操作除修改备份设置以外均使用 **KubeBlocks O
 
 ![image-20250928172142795](./assets/overview.png)
 
-储存容量仅支持扩容，且需要在创建数据库时选择的 `storageclass`  `ALLOWVOLUMEEXPANSION` 为 true
+存储容量仅支持扩容，且需要在创建数据库时选择的 `storageclass`  `ALLOWVOLUMEEXPANSION` 为 true
 
 ![image-20250928171353264](./assets/expansion.png)
 
@@ -107,7 +107,7 @@ KubeBlocks 中的运维操作除修改备份设置以外均使用 **KubeBlocks O
 
 ### 4.1 新组件类型 `kubeblocks_component`
 
-为了实现 KubeBlocks 在 Rainbond 中的集成，我们在 Rainbond 中新增组件类型 `kubeblocks_component`，该类型只向数据库（rbd-db）中只写入基础的组件信息、端口和组件连接信息，只由 rbd-worker 创建 service，其余生命周期相关的操作在 rbd-worker 中直接跳过，均由 rbd-api 转发给 Block Mechanica 实现
+为了实现 KubeBlocks 在 Rainbond 中的集成，我们在 Rainbond 中新增组件类型 `kubeblocks_component`，该类型只向数据库（rbd-db）中写入基础的组件信息、端口和组件连接信息，只由 rbd-worker 创建 service，其余生命周期相关的操作在 rbd-worker 中直接跳过，均由 rbd-api 转发给 Block Mechanica 实现
 
 `kubeblocks_component` 通过 rbd-worker 在进行 `Rainbond 应用 -> k8s 资源` 时为其应用不同的 service selector 创建规则实现通过 `kubeblocks_component` 对于 KubeBlocks Cluster 的连接:
 
@@ -145,11 +145,11 @@ func (a *AppServiceBuild) generateKubeBlocksSelector() map[string]string {
 }
 ```
 
-为兼容 selector 创建, 用户在 Rainbond 中创建的 KubeBlocks Component 英文名将强制添加后缀 `**-{component}**（即用户选择的数据库类型）
+为兼容 selector 创建，用户在 Rainbond 中创建的 KubeBlocks Component 英文名将强制添加后缀 `**-{component}**（即用户选择的数据库类型）
 
 **可以这么认为：对于 Rainbond 来说，KubeBlocks Component 并不会通过 rbd-worker 转换成 KubeBlocks Cluster，而只是一个管理了一个 service，Rainbond 组件通过这个 service 连接到数据库，在事实上完成了常规的 Rainbond 组件的功能；而生命周期相关的管理仍交由 Block Mechanica 完成**
 
-在此设计下，同过 Rainbond 创建的数据库集群的可用性由 KubeBlocks 保障，Block Mechanica 只负责作为 Rainbond 与 KubeBlocks 之间的连接器
+在此设计下，通过 Rainbond 创建的数据库集群的可用性由 KubeBlocks 保障，Block Mechanica 只负责作为 Rainbond 与 KubeBlocks 之间的连接器
 
 ### 4.2 KubeBlocks Component 和 KubeBlocks Cluster 的关联是如何实现的
 
@@ -178,15 +178,15 @@ graph TD
     B -.-> J
 ```
 
-1. **统一接口**
-- 通过 `ClusterAdapter` 为不同数据库提供统一的创建接口
-- 每个数据库类型实现自己的 `Builder` 和 `Coordinator`
+- **统一接口**
+  - 通过 `ClusterAdapter` 为不同数据库提供统一的创建接口
+  - 每个数据库类型实现自己的 `Builder` 和 `Coordinator`
 
-2. **职责分离**
-- `Builder`: 负责构建 KubeBlocks Cluster
-- `Coordinator`: 负责数据库特定的配置协调（端口、认证、备份等等）
+- **职责分离**
+   - `Builder`: 负责构建 KubeBlocks Cluster
+   - `Coordinator`: 负责数据库特定的配置协调（端口、认证、备份等等）
 
-3. **扩展数据库支持**
+- **扩展数据库支持**
   1. 实现 `Builder` 和 `Coordinator`
   2. 在 Registry 中注册
   3. 自动获得完整的集群管理能力
