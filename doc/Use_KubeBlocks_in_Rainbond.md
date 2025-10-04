@@ -6,9 +6,9 @@
 
 ## 安装 KubeBlocks
 
-安装过程参考 KubeBlocks 的[安装文档](https://kubeblocks.io/docs/release-1_0/user_docs/overview/install-kubeblocks)，这里我们简要说明通过 Helm 安装 KubeBlocks 的步骤，下面的内容大部分来自 [KubeBlocks 官方文档](https://kubeblocks.io/docs/release-1_0/user_docs/overview/introduction)
+安装过程参考 KubeBlocks 的[安装文档](https://kubeblocks.io/docs/release-1_0_1/user_docs/overview/install-kubeblocks)，这里我们简要说明通过 Helm 安装 KubeBlocks 的步骤，下面的内容大部分来自 [KubeBlocks 官方文档](https://kubeblocks.io/docs/release-1_0_1/user_docs/overview/introduction)
 
-### [前提条件](https://kubeblocks.io/docs/release-1_0/user_docs/overview/install-kubeblocks#prerequisites)
+### [前提条件](https://kubeblocks.io/docs/release-1_0_1/user_docs/overview/install-kubeblocks#prerequisites)
 
 | Component 组件    | Database 数据库 | Recommendation 推荐配置                   |
 | :---------------- | :-------------- | :---------------------------------------- |
@@ -21,31 +21,31 @@
 > - Kubernetes 集群（建议 v1.21+版本）——如需可创建测试集群
 > - `kubectl` 已安装并配置 v1.21+版本，具备集群访问权限
 > - 已安装 Helm（[安装指南](https://helm.sh/docs/intro/install/)）
-> - 已安装快照控制器 （[安装指南](https://kubeblocks.io/docs/release-1_0/user_docs/references/install-snapshot-controller))
+> - 已安装快照控制器 （[安装指南](https://kubeblocks.io/docs/release-1_0_1/user_docs/references/install-snapshot-controller))
 
 ### 安装 KubeBlocks
 
 ```shell
 # 安装 CRDs
-kubectl create -f https://github.com/apecloud/kubeblocks/releases/download/v1.0.0/kubeblocks_crds.yaml
+kubectl create -f https://github.com/apecloud/kubeblocks/releases/download/v1.0.1/kubeblocks_crds.yaml
 
 # 设置 Helm Repository
 helm repo add kubeblocks https://apecloud.github.io/helm-charts
 helm repo update
 
 # 部署 KubeBlocks
-helm install kubeblocks kubeblocks/kubeblocks --namespace kb-system --create-namespace --version=v1.0.0
+helm install kubeblocks kubeblocks/kubeblocks --namespace kb-system --create-namespace --version=v1.0.1
 
 # 可以设置使用 KubeBlocks 提供的镜像源
-helm install kubeblocks kubeblocks/kubeblocks --namespace kb-system --create-namespace --version=v1.0.0 \
+helm install kubeblocks kubeblocks/kubeblocks --namespace kb-system --create-namespace --version=v1.0.1 \
 --set image.registry=apecloud-registry.cn-zhangjiakou.cr.aliyuncs.com \
 --set dataProtection.image.registry=apecloud-registry.cn-zhangjiakou.cr.aliyuncs.com \
 --set addonChartsImage.registry=apecloud-registry.cn-zhangjiakou.cr.aliyuncs.com
 ```
 
-**注意，KubeBlocks 的 Addon 需要单独设置镜像源**, 参见: <https://kubeblocks.io/docs/release-1_0/user_docs/references/install-addons>
+**注意，KubeBlocks 的 Addon 需要单独设置镜像源**, 参见: <https://kubeblocks.io/docs/release-1_0_1/user_docs/references/install-addons>
 
-可以在部署时通过指定配置文件来自动创建 BackupRepo: <https://kubeblocks.io/docs/release-1_0/user_docs/concepts/backup-and-restore/backup/backup-repo>
+可以在部署时通过指定配置文件来自动创建 BackupRepo: <https://kubeblocks.io/docs/release-1_0_1/user_docs/concepts/backup-and-restore/backup/backup-repo>
 
 在部署时创建 BackupRepo 会[简单](#配置-backuprepo)很多，下面以 Rainbond 自动创建的 minio 为例:
 
@@ -67,7 +67,7 @@ backupRepo:
 部署时使用
 
 ```shell
-helm install kubeblocks kubeblocks/kubeblocks --namespace kb-system --create-namespace --version=v1.0.0 \
+helm install kubeblocks kubeblocks/kubeblocks --namespace kb-system --create-namespace --version=v1.0.1 \
 -f backuprepo.yaml
 ```
 
@@ -93,7 +93,7 @@ kubeblocks-dataprotection-95fbc79cc-b544l        1/1     Running   0            
 
 **注意**：在 Rainbond 上能够使用的数据库类型取决于你安装的 KubeBlocks Addon 和 Block Mechanica 的支持，目前支持 MySQL semisync、PostgreSQL、Redis replication、RabbitMQ
 
-### 配置 [BackupRepo](https://kubeblocks.io/docs/preview/user_docs/concepts/backup-and-restore/backup/backup-repo)
+### 配置 [BackupRepo](https://kubeblocks.io/docs/release-1_0_1/user_docs/concepts/backup-and-restore/backup/backup-repo)
 
 > backupRepo is the storage repository for backup data. Currently, KubeBlocks supports configuring various object storage services as backup repositories, including OSS (Alibaba Cloud Object Storage Service), S3 (Amazon Simple Storage Service), COS (Tencent Cloud Object Storage), GCS (Google Cloud Storage), OBS (Huawei Cloud Object Storage), Azure Blob Storage, MinIO, and other S3-compatible services.
 
@@ -135,7 +135,7 @@ spec:
 EOF
 ```
 
-你可以通过 `kubectl get backuprepo` 获取到你创建的 BackupRepo 的状态，如果遇到问题请查看 KubeBlocks 官方文档：<https://kubeblocks.io/docs/preview/user_docs/concepts/backup-and-restore/backup/backup-repo#manual-backup-repo-configuration>
+你可以通过 `kubectl get backuprepo` 获取到你创建的 BackupRepo 的状态，如果遇到问题请查看 KubeBlocks 官方文档：<https://kubeblocks.io/docs/release-1_0_1/user_docs/concepts/backup-and-restore/backup/backup-repo>
 
 ## 安装 Block Mechanica
 
