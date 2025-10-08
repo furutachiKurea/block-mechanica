@@ -7,8 +7,6 @@ import (
 	"github.com/furutachiKurea/block-mechanica/internal/log"
 	"github.com/furutachiKurea/block-mechanica/internal/model"
 	"github.com/furutachiKurea/block-mechanica/service/adapter"
-
-	"github.com/spf13/viper"
 )
 
 var _ adapter.Coordinator = &PostgreSQL{}
@@ -51,29 +49,64 @@ func (c *PostgreSQL) ParseParameters(configData map[string]string) ([]model.Para
 		return []model.ParameterEntry{}, nil
 	}
 
-	v := viper.New()
-	v.SetConfigType("properties")
+	lines := strings.Split(pgConfContent, "\n")
+	parameters := make([]model.ParameterEntry, 0, len(lines)/2)
 
-	if err := v.ReadConfig(strings.NewReader(pgConfContent)); err != nil {
-		log.Warn("failed to parse postgresql.conf content", log.Err(err))
-		return []model.ParameterEntry{}, fmt.Errorf("parse postgresql.conf: %w", err)
-	}
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		line = removeInlineComment(line)
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
 
-	var parameters []model.ParameterEntry
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
 
-	// 获取所有配置项
-	allSettings := v.AllSettings()
-	for key, value := range allSettings {
-		if strings.HasPrefix(key, "#") {
+		if key == "" {
 			continue
 		}
 
 		param := model.ParameterEntry{
 			Name:  key,
-			Value: convParameterValue(fmt.Sprintf("%v", value)), // TODO 替换 Sprintf
+			Value: convParameterValue(value),
 		}
 		parameters = append(parameters, param)
 	}
 
 	return parameters, nil
+}
+
+// removeInlineComment 移除行尾注释,但保留引号内的 # 字符
+//
+// 例如: "key = 'value # not comment' # this is comment" -> "key = 'value # not comment'"
+func removeInlineComment(line string) string {
+	inSingleQuote := false
+	inDoubleQuote := false
+
+	for i, ch := range line {
+		switch ch {
+		case '\'':
+			if !inDoubleQuote {
+				inSingleQuote = !inSingleQuote
+			}
+		case '"':
+			if !inSingleQuote {
+				inDoubleQuote = !inDoubleQuote
+			}
+		case '#':
+			// 如果不在引号内,这是注释的开始
+			if !inSingleQuote && !inDoubleQuote {
+				return strings.TrimSpace(line[:i])
+			}
+		}
+	}
+
+	return line
 }

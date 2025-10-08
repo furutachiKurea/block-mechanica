@@ -8,7 +8,7 @@ import (
 	"github.com/furutachiKurea/block-mechanica/internal/model"
 	"github.com/furutachiKurea/block-mechanica/service/adapter"
 
-	"github.com/spf13/viper"
+	"gopkg.in/ini.v1"
 )
 
 var _ adapter.Coordinator = &MySQL{}
@@ -51,21 +51,27 @@ func (c *MySQL) ParseParameters(configData map[string]string) ([]model.Parameter
 		return []model.ParameterEntry{}, nil
 	}
 
-	v := viper.New()
-	v.SetConfigType("ini")
-
-	if err := v.ReadConfig(strings.NewReader(myCnfContent)); err != nil {
+	cfg, err := ini.LoadSources(ini.LoadOptions{
+		AllowBooleanKeys: true,
+		Loose:            true,
+	}, []byte(myCnfContent))
+	if err != nil {
 		log.Warn("failed to parse my.cnf content", log.Err(err))
 		return []model.ParameterEntry{}, fmt.Errorf("parse my.cnf: %w", err)
 	}
 
 	var parameters []model.ParameterEntry
 
-	mysqldSettings := v.GetStringMapString("mysqld")
-	for key, value := range mysqldSettings {
+	mysqldSettings := cfg.Section("mysqld")
+	if mysqldSettings == nil {
+		log.Info("mysqld section not found in my.cnf")
+		return []model.ParameterEntry{}, nil
+	}
+
+	for _, key := range mysqldSettings.Keys() {
 		param := model.ParameterEntry{
-			Name:  key,
-			Value: convParameterValue(value),
+			Name:  key.Name(),
+			Value: convParameterValue(key.String()),
 		}
 		parameters = append(parameters, param)
 	}
