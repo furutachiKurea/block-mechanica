@@ -2,7 +2,9 @@
 package mono
 
 import (
+	"crypto/rand"
 	"fmt"
+	"math/big"
 	"sort"
 
 	corev1 "k8s.io/api/core/v1"
@@ -52,4 +54,38 @@ func GetSecretField(secret *corev1.Secret, field string) (string, error) {
 	}
 
 	return string(data), nil
+}
+
+func GeneratePWD(length int) string {
+	const (
+		upper   = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+		lower   = "abcdefghijklmnopqrstuvwxyz"
+		digits  = "0123456789"
+		symbols = "-_"
+	)
+	charset := upper + lower + digits + symbols
+
+	pwd := make([]byte, 0, length)
+
+	randChar := func(s string) byte {
+		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(s))))
+		return s[int(n.Int64())]
+	}
+
+	pwd = append(pwd, randChar(upper))
+	pwd = append(pwd, randChar(lower))
+	pwd = append(pwd, randChar(digits))
+	pwd = append(pwd, randChar(symbols))
+
+	for len(pwd) < length {
+		pwd = append(pwd, randChar(charset))
+	}
+
+	for i := len(pwd) - 1; i > 0; i-- {
+		jBig, _ := rand.Int(rand.Reader, big.NewInt(int64(i+1)))
+		j := int(jBig.Int64())
+		pwd[i], pwd[j] = pwd[j], pwd[i]
+	}
+
+	return string(pwd)
 }

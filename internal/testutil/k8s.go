@@ -131,6 +131,7 @@ func CreateObjects(ctx context.Context, c client.Client, objs []client.Object) e
 type ErrorClientBuilder struct {
 	client         client.Client
 	createErr      error
+	createTypeErrs map[string]error // 按类型的 Create 错误
 	listErr        error
 	getErr         error
 	updateErr      error
@@ -141,12 +142,22 @@ type ErrorClientBuilder struct {
 
 // NewErrorClientBuilder 创建可配置失败行为的 client builder
 func NewErrorClientBuilder(objs ...client.Object) *ErrorClientBuilder {
-	return &ErrorClientBuilder{client: NewFakeClient(objs...)}
+	return &ErrorClientBuilder{
+		client:         NewFakeClient(objs...),
+		createTypeErrs: make(map[string]error),
+	}
 }
 
 // WithCreateError 指定 Create 操作的错误
 func (b *ErrorClientBuilder) WithCreateError(err error) *ErrorClientBuilder {
 	b.createErr = err
+	return b
+}
+
+// WithCreateErrorForType 为特定类型的对象指定 Create 错误
+func (b *ErrorClientBuilder) WithCreateErrorForType(obj client.Object, err error) *ErrorClientBuilder {
+	typeName := fmt.Sprintf("%T", obj)
+	b.createTypeErrs[typeName] = err
 	return b
 }
 
@@ -191,6 +202,7 @@ func (b *ErrorClientBuilder) Build() client.Client {
 	return &errorClient{
 		Client:         b.client,
 		createErr:      b.createErr,
+		createTypeErrs: b.createTypeErrs,
 		listErr:        b.listErr,
 		getErr:         b.getErr,
 		updateErr:      b.updateErr,
@@ -203,6 +215,7 @@ func (b *ErrorClientBuilder) Build() client.Client {
 type errorClient struct {
 	client.Client
 	createErr      error
+	createTypeErrs map[string]error
 	listErr        error
 	getErr         error
 	updateErr      error
@@ -213,6 +226,12 @@ type errorClient struct {
 
 // Create 实现 Create 方法，根据配置返回错误
 func (f *errorClient) Create(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
+	// 如果指定了类型特定的错误，则返回该错误
+	typeName := fmt.Sprintf("%T", obj)
+	if err, ok := f.createTypeErrs[typeName]; ok {
+		return err
+	}
+
 	if f.createErr != nil {
 		return f.createErr
 	}

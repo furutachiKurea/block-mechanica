@@ -7,6 +7,7 @@ import (
 	"github.com/furutachiKurea/block-mechanica/internal/log"
 	"github.com/furutachiKurea/block-mechanica/internal/model"
 	"github.com/furutachiKurea/block-mechanica/service/adapter"
+	"k8s.io/utils/ptr"
 )
 
 var _ adapter.Coordinator = &Redis{}
@@ -29,6 +30,11 @@ func (r *Redis) GetBackupMethod() string {
 func (r *Redis) GetParametersConfigMap(clusterName string) *string {
 	cmName := fmt.Sprintf("%s-redis-redis-replication-config", clusterName)
 	return &cmName
+}
+
+// SystemAccount 来自 componentDefinition
+func (r *Redis) SystemAccount() *string {
+	return ptr.To("default")
 }
 
 // ParseParameters 解析 Redis ConfigMap 中的 redis.conf 配置参数

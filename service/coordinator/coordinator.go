@@ -43,6 +43,11 @@ func (c *Coordinator) ParseParameters(configData map[string]string) ([]model.Par
 	return []model.ParameterEntry{}, nil
 }
 
+// SystemAccount 返回 nil，任何启用 custom secret 的 Addon 都应该重写此方法
+func (c *Coordinator) SystemAccount() *string {
+	return nil
+}
+
 // convParameterValue 解析配置参数值，尝试转换为合适的类型
 // 支持自动类型推断: int -> int, float -> float64, bool -> bool（仅 true/false）,
 func convParameterValue(value string) any {

@@ -37,6 +37,10 @@ type Coordinator interface {
 	// ParseParameters 解析 ConfigMap 中的配置文件参数
 	// configData 为 ConfigMap 的 data 字段，包含各种配置文件内容
 	ParseParameters(configData map[string]string) ([]model.ParameterEntry, error)
+
+	// SystemAccount 返回该数据库类型在使用 custom secret 时使用的 systemAccount.name 和数据库账户名称,
+	// 返回 nil 则表示不启用 custom secret
+	SystemAccount() *string
 }
 
 // ClusterAdapter

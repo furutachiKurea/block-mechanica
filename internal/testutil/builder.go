@@ -136,6 +136,24 @@ func (cb *ClusterBuilder) WithComponentVolumeClaimTemplate(componentName, volume
 	return cb
 }
 
+// WithSystemAccountSecret 为第一个 ComponentSpec 配置 SystemAccount
+func (cb *ClusterBuilder) WithSystemAccountSecret(accountName, secretName string) *ClusterBuilder {
+	if len(cb.cluster.Spec.ComponentSpecs) == 0 {
+		return cb
+	}
+
+	cb.cluster.Spec.ComponentSpecs[0].SystemAccounts = []kbappsv1.ComponentSystemAccount{
+		{
+			Name: accountName,
+			SecretRef: &kbappsv1.ProvisionSecretRef{
+				Name:      secretName,
+				Namespace: cb.cluster.Namespace,
+			},
+		},
+	}
+	return cb
+}
+
 // WithPhase 设置 Cluster 状态
 func (cb *ClusterBuilder) WithPhase(phase kbappsv1.ClusterPhase) *ClusterBuilder {
 	cb.cluster.Status.Phase = phase
@@ -264,6 +282,69 @@ func (bb *BackupBuilder) WithDeletionTimestamp() *BackupBuilder {
 // Build 构建 Backup 对象
 func (bb *BackupBuilder) Build() *datav1alpha1.Backup {
 	return bb.backup
+}
+
+// SecretBuilder 链式构建 Secret
+type SecretBuilder struct {
+	secret *corev1.Secret
+}
+
+// NewSecretBuilder 创建 SecretBuilder
+func NewSecretBuilder(name, namespace string) *SecretBuilder {
+	return &SecretBuilder{
+		secret: &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: namespace,
+				Labels:    make(map[string]string),
+			},
+			Type: corev1.SecretTypeOpaque,
+			Data: make(map[string][]byte),
+		},
+	}
+}
+
+// WithType 设置 Secret 类型
+func (sb *SecretBuilder) WithType(secretType corev1.SecretType) *SecretBuilder {
+	sb.secret.Type = secretType
+	return sb
+}
+
+// WithData 设置 Secret data 字段（字节数组）
+func (sb *SecretBuilder) WithData(key string, value []byte) *SecretBuilder {
+	sb.secret.Data[key] = value
+	return sb
+}
+
+// WithStringData 设置 Secret data 字段（字符串，自动转换为字节数组）
+func (sb *SecretBuilder) WithStringData(key, value string) *SecretBuilder {
+	sb.secret.Data[key] = []byte(value)
+	return sb
+}
+
+// WithLabels 设置 Secret labels
+func (sb *SecretBuilder) WithLabels(labels map[string]string) *SecretBuilder {
+	for k, v := range labels {
+		sb.secret.Labels[k] = v
+	}
+	return sb
+}
+
+// WithServiceID 设置 service_id 标签
+func (sb *SecretBuilder) WithServiceID(serviceID string) *SecretBuilder {
+	sb.secret.Labels[index.ServiceIDLabel] = serviceID
+	return sb
+}
+
+// WithImmutable 设置 Secret 是否不可变
+func (sb *SecretBuilder) WithImmutable(immutable bool) *SecretBuilder {
+	sb.secret.Immutable = ptr.To(immutable)
+	return sb
+}
+
+// Build 构建 Secret 对象
+func (sb *SecretBuilder) Build() *corev1.Secret {
+	return sb.secret
 }
 
 // OpsRequestBuilder 提供链式 API 来构建 OpsRequest 对象

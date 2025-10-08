@@ -16,7 +16,7 @@ spec:
       serviceAccountName: block-mechanica-sa
       containers:
         - name: block-mechanica
-          image: crpi-aoz6mrz2bbre0gxx.cn-hangzhou.personal.cr.aliyuncs.com/block-mechanica/block-mechanica:0.13.0
+          image: crpi-aoz6mrz2bbre0gxx.cn-hangzhou.personal.cr.aliyuncs.com/block-mechanica/block-mechanica:0.13.2
           ports:
             - containerPort: 8080
           envFrom:
@@ -80,7 +80,7 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list", "watch", "create", "delete"]
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["list", "watch", "create"]
