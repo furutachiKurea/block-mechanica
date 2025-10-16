@@ -16,7 +16,13 @@ Block Mechanica 是一个轻量化的 Kubernetes 服务，通过使用 Echo 编�
 
 ## 如何部署
 
-[在 Rainbond 中使用 KubeBlocks](./doc/Use_KubeBlocks_in_Rainbond.md)
+[在 Rainbond 中部署 KubeBlocks 和 Block Mechanica](./doc/Deploy.md)
+
+## 如何在 Rainbond 中使用 KubeBlocks
+
+绝大部分情况下，都能像使用 Rainbond 组件一样使用通过 KubeBlocks 创建的数据库
+
+当然也存在一些不同，详见 [在 Rainbond 中使用 KubeBlocks](./doc/Use_KubeBlocks_in_Rainbond.md)
 
 ## 目录结构
 
@@ -90,4 +96,4 @@ Block Mechanica 是一个轻量化的 Kubernetes 服务，通过使用 Echo 编�
 
 ## License
 
-[AGPL-3.0](./LICENSE)
+[Apache 2.0](./LICENSE)
