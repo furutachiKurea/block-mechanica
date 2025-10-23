@@ -30,6 +30,7 @@ func (v *ParameterValidator) Validate(entry model.ParameterEntry) *ParameterVali
 	// 检查参数是否存在
 	constraint, exists := v.constraints[entry.Name]
 	if !exists {
+		log.Error("parameter not Exist", log.String("parameter_name", entry.Name), log.Any("constraints", v.constraints[entry.Name]))
 		return &ParameterValidationError{
 			ParameterName: entry.Name,
 			ErrorCode:     ParamNotExist,
@@ -54,6 +55,14 @@ func (v *ParameterValidator) Validate(entry model.ParameterEntry) *ParameterVali
 			ErrorCode:     ParamRequiredMissing,
 			ErrorMessage:  fmt.Sprintf("parameter '%s' is required and cannot be empty", entry.Name),
 		}
+	}
+
+	// 如果没有类型信息（Type 为空），说明参数只在列表中声明但没有 schema 定义
+	// 跳过类型、范围、枚举校验，只进行 immutable 检查
+	if constraint.Type == "" {
+		log.Debug("parameter has no schema definition, skipping type/range/enum validation",
+			log.String("parameter", entry.Name))
+		return nil
 	}
 
 	// 验证参数类型

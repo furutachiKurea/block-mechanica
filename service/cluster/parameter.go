@@ -206,15 +206,37 @@ func (s *Service) getParameterConstraints(
 	}
 
 	parameters := make(map[string]model.Parameter)
+	allParamSets := &model.ParameterSets{
+		Dynamic:   make(map[string]bool),
+		Static:    make(map[string]bool),
+		Immutable: make(map[string]bool),
+	}
 
+	// 从 schema 提取带完整定义的参数
 	for _, pd := range paramDefs {
 		if pd == nil {
 			continue
 		}
+		log.Debug("processing parameter definition", log.String("pd", pd.Name))
 		schema, err := s.processParameterSchema(&pd.Spec)
 		if err != nil {
 			return nil, fmt.Errorf("process parameter schema: %w", err)
 		}
+
+		paramSets := createParameterSets(&pd.Spec)
+
+		// 合并所有 ParametersDefinition 的参数集合
+		for param := range paramSets.Dynamic {
+			allParamSets.Dynamic[param] = true
+		}
+		for param := range paramSets.Static {
+			allParamSets.Static[param] = true
+		}
+		for param := range paramSets.Immutable {
+			allParamSets.Immutable[param] = true
+		}
+
+		// 仅处理有 schema 定义的参数
 		if schema == nil {
 			continue
 		}
@@ -224,14 +246,46 @@ func (s *Service) getParameterConstraints(
 			continue
 		}
 
-		paramSets := createParameterSets(&pd.Spec)
-
 		for paramName, property := range properties {
 			param := s.buildParameterConstraint(paramName, property, paramSets)
 			if _, exists := parameters[paramName]; exists {
 				log.Debug("duplicate parameter name detected; overriding previous entry", log.String("param", paramName))
 			}
 			parameters[paramName] = param
+		}
+	}
+
+	// 补充只在参数列表中声明但没有 schema 定义的参数
+	// 收集所有出現在 parametersdefinitions 中的参数
+	allDeclaredParams := make(map[string]bool)
+	for param := range allParamSets.Dynamic {
+		allDeclaredParams[param] = true
+	}
+	for param := range allParamSets.Static {
+		allDeclaredParams[param] = true
+	}
+	for param := range allParamSets.Immutable {
+		allDeclaredParams[param] = true
+	}
+	// 补充参数
+	for paramName := range allDeclaredParams {
+		if _, exists := parameters[paramName]; !exists {
+			// 创建基础约束：只包含名称和可变性标记，Type 为空表示无详细约束
+			param := model.Parameter{
+				ParameterEntry: model.ParameterEntry{
+					Name:  paramName,
+					Value: nil,
+				},
+				Type:        "", // 无 schema 约束
+				IsDynamic:   allParamSets.Dynamic[paramName],
+				IsImmutable: allParamSets.Immutable[paramName],
+				IsRequired:  false,
+			}
+			parameters[paramName] = param
+			log.Debug("parameter declared in list but missing schema definition",
+				log.String("param", paramName),
+				log.Bool("isDynamic", param.IsDynamic),
+				log.Bool("isImmutable", param.IsImmutable))
 		}
 	}
 
