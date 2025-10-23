@@ -300,7 +300,6 @@ func TestGetClusterDetail(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				if tt.expectDetail != nil && result != nil {
-					// 对于复杂的结构体比较，我们分别验证主要字段
 					assert.Equal(t, tt.expectDetail.Basic.ClusterInfo, result.Basic.ClusterInfo)
 					assert.Equal(t, tt.expectDetail.Basic.RBDService, result.Basic.RBDService)
 					assert.Equal(t, tt.expectDetail.Basic.Status, result.Basic.Status)

@@ -186,8 +186,9 @@ func (s *Service) buildBasicInfo(
 			StatusCN:  transStatus(status),
 			StartTime: startTime,
 		},
-		Replicas:        podList,
-		IsSupportBackup: kbkit.IsSupportBackup(kbkit.ClusterType(cluster)),
+		Replicas:           podList,
+		IsSupportBackup:    kbkit.IsSupportBackup(kbkit.ClusterType(cluster)),
+		IsSupportParameter: kbkit.IsSupportParameter(kbkit.ClusterType(cluster)),
 	}
 }
 

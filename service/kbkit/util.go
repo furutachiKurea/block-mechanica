@@ -78,6 +78,14 @@ func IsSupportBackup(addon string) bool {
 	return adapter.Coordinator.GetBackupMethod() != ""
 }
 
+func IsSupportParameter(addon string) bool {
+	adapter, ok := registry.Cluster[addon]
+	if !ok {
+		return false
+	}
+	return adapter.Coordinator.GetParametersConfigMap("not support") != nil
+}
+
 // GetAllOpsRequestsByCluster 获取指定集群的所有 OpsRequest
 // 包括所有状态的 OpsRequest，用于彻底清理资源或审计目的
 func GetAllOpsRequestsByCluster(ctx context.Context, c client.Client, namespace, clusterName string) ([]opsv1alpha1.OpsRequest, error) {
