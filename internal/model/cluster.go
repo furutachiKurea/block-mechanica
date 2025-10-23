@@ -240,10 +240,16 @@ type ClusterStatus struct {
 
 // Status 副本状态信息
 type Status struct {
-	Name      string          `json:"name"`
-	Component string          `json:"component,omitempty"`
-	Status    corev1.PodPhase `json:"status"`
-	Ready     bool            `json:"ready"`
+	Name       string             `json:"name"`
+	Component  string             `json:"component,omitempty"`
+	Status     corev1.PodPhase    `json:"status"`
+	Ready      bool               `json:"ready"`
+	Containers []ReplicaContainer `json:"containers,omitempty"`
+}
+
+// ReplicaContainer 副本中的容器
+type ReplicaContainer struct {
+	Name string `json:"name"`
 }
 
 // ComponentName 组件名称

@@ -215,11 +215,28 @@ func buildPodStatus(pod corev1.Pod, componentName string) model.Status {
 	}
 
 	return model.Status{
-		Name:      pod.Name,
-		Component: componentName,
-		Status:    pod.Status.Phase,
-		Ready:     ready,
+		Name:       pod.Name,
+		Component:  componentName,
+		Status:     pod.Status.Phase,
+		Ready:      ready,
+		Containers: buildReplicaContainers(&pod),
 	}
+}
+
+// buildReplicaContainers build []ReplicaContainer
+func buildReplicaContainers(pod *corev1.Pod) []model.ReplicaContainer {
+	if len(pod.Spec.Containers) == 0 {
+		return nil
+	}
+
+	containers := make([]model.ReplicaContainer, 0, len(pod.Spec.Containers))
+	for _, container := range pod.Spec.Containers {
+		containers = append(containers, model.ReplicaContainer{
+			Name: container.Name,
+		})
+	}
+
+	return containers
 }
 
 // getInstanceSetByCluster 通过 cluster 和 component 获取 InstanceSet

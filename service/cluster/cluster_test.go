@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/furutachiKurea/block-mechanica/internal/index"
+	"github.com/furutachiKurea/block-mechanica/internal/model"
 	"github.com/furutachiKurea/block-mechanica/internal/testutil"
 	"github.com/furutachiKurea/block-mechanica/service/kbkit"
 
@@ -147,14 +148,14 @@ func TestAssociateToKubeBlocksComponent(t *testing.T) {
 	}
 }
 
-func TestGetClusterPodsHelper(t *testing.T) {
+func TestGetClusterPods(t *testing.T) {
 	tests := []struct {
 		name          string
 		setup         func() (client.Client, *kbappsv1.Cluster)
 		expectError   bool
 		errorContains string
 		expectPods    int
-		verifyPods    func(t *testing.T, pods []interface{}) // 使用 interface{} 避免导入 model 包
+		verifyPods    func(t *testing.T, pods []model.Status)
 	}{
 		{
 			name: "empty_component_specs",
@@ -201,6 +202,11 @@ func TestGetClusterPodsHelper(t *testing.T) {
 							"apps.kubeblocks.io/component-name": "mysql",
 						},
 					},
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{
+							{Name: "mysql", Image: "mysql:8.0"},
+						},
+					},
 					Status: corev1.PodStatus{
 						Phase: corev1.PodRunning,
 						Conditions: []corev1.PodCondition{
@@ -217,6 +223,11 @@ func TestGetClusterPodsHelper(t *testing.T) {
 							"apps.kubeblocks.io/component-name": "mysql",
 						},
 					},
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{
+							{Name: "mysql", Image: "mysql:8.0"},
+						},
+					},
 					Status: corev1.PodStatus{
 						Phase: corev1.PodRunning,
 						Conditions: []corev1.PodCondition{
@@ -230,6 +241,10 @@ func TestGetClusterPodsHelper(t *testing.T) {
 			},
 			expectError: false,
 			expectPods:  2,
+			verifyPods: func(t *testing.T, pods []model.Status) {
+				require.NotEmpty(t, pods)
+				assert.Equal(t, []model.ReplicaContainer{{Name: "mysql"}}, pods[0].Containers)
+			},
 		},
 		{
 			name: "multiple_components",
@@ -256,6 +271,11 @@ func TestGetClusterPodsHelper(t *testing.T) {
 							"apps.kubeblocks.io/component-name": "redis",
 						},
 					},
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{
+							{Name: "redis", Image: "redis:7.0"},
+						},
+					},
 					Status: corev1.PodStatus{Phase: corev1.PodRunning},
 				}
 
@@ -274,6 +294,11 @@ func TestGetClusterPodsHelper(t *testing.T) {
 							"apps.kubeblocks.io/component-name": "redis-sentinel",
 						},
 					},
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{
+							{Name: "sentinel", Image: "sentinel:7.0"},
+						},
+					},
 					Status: corev1.PodStatus{Phase: corev1.PodRunning},
 				}
 
@@ -283,6 +308,11 @@ func TestGetClusterPodsHelper(t *testing.T) {
 			},
 			expectError: false,
 			expectPods:  2,
+			verifyPods: func(t *testing.T, pods []model.Status) {
+				require.Len(t, pods, 2)
+				assert.Equal(t, []model.ReplicaContainer{{Name: "redis"}}, pods[0].Containers)
+				assert.Equal(t, []model.ReplicaContainer{{Name: "sentinel"}}, pods[1].Containers)
+			},
 		},
 		{
 			name: "instanceset_not_found",
@@ -358,7 +388,7 @@ func TestGetClusterPodsHelper(t *testing.T) {
 				}
 
 				if tt.verifyPods != nil {
-					tt.verifyPods(t, []interface{}{})
+					tt.verifyPods(t, pods)
 				}
 			}
 		})
