@@ -119,7 +119,7 @@ func (s *Service) convertOpsRequestToEventItem(opsRequest *opsv1alpha1.OpsReques
 	return model.EventItem{
 		OpsName:     opsRequest.Name,
 		OpsType:     toRainbondOptType(opsRequest.Spec.Type),
-		UserName:    "BlockMechanica",
+		UserName:    "system",
 		Status:      status,
 		FinalStatus: finalStatus,
 		Message:     message,
