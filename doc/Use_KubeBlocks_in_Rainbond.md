@@ -108,13 +108,13 @@ Rainbond 将在完成数据库集群创建之后自动在组件连接信息中�
 
 ### 高级设置
 
-相比于常规的 Rainbond 组件，KubeBlocks 数据库集群不支持高级设置中的 `储存`、`插件`、`构建源`、`其他设置`，但是额外支持了 `参数配置`，对于支持数据库参数配置的类型，可以在此处设置数据库参数
+相比于常规的 Rainbond 组件，KubeBlocks 数据库集群不支持高级设置中的 `储存`、`插件`、`构建源`、`其他设置`，但是额外支持了 `参数配置`，对于支持数据库参数配置的类型，可以在此处设置数据库参数，此外并不是所有的数据库类型都支持参数配置，如 RabbitMQ
 
 ![image-20251016161055609](./assets/image-20251016161055609.png)
 
 #### 端口
 
-对于端口设置，尽管提供了开关，但是目前数据库集群暂不支持通过 Rainbond 设置对外服务
+对于端口设置，目前 KubeBlocks 数据库集群仅支持 TCP 协议
 
 #### 参数配置
 
@@ -123,7 +123,7 @@ Rainbond 将在完成数据库集群创建之后自动在组件连接信息中�
 如果该数据库类型不支持进行参数配置，则该表将显示为空
 
 Block Mechanica 判断可展示的数据库参数和其当前值的逻辑为：
-从对应数据库的 `parametersdefinitions.parameters.kubeblocks.io` 中获取定义，并从数据库集群创建时对应创建的 configmap 中获取配置文件中设置的值（对应 `redis.conf`, `postgresql.conf`, etc.)，对二者**取交集**作为在 Rainbond 中展示的数据
+从对应数据库的 `parametersdefinitions.parameters.kubeblocks.io` 中获取定义，并从数据库集群创建时对应创建的 configmap 中获取配置文件中设置的值（对应 `redis.conf`, `postgresql.conf`, etc.），对二者**取交集**作为在 Rainbond 中展示的数据
 
 ![image-20251016161955879](./assets/image-20251016161955879.png)
 
@@ -133,5 +133,5 @@ Block Mechanica 判断可展示的数据库参数和其当前值的逻辑为：
 
 ![image-20251016162928955](./assets/image-20251016162928955.png)
 
-KubeBlocks 数据库集群目前支持的功能有限，除去前面明确说明的部分，部分 Rainbond 功能可能因为各种原因不被支持，如由于 Rainbond 与 KubeBlocks 的设计差异，构建、滚动更新操作将不会得到支持；以目前 KubeBlocks 在 Rainbond 中的集成度，`应用模板` 及其相关功能暂不被支持
+**KubeBlocks 数据库集群目展示前支持的功能有限，除去前面明确说明的部分，部分 Rainbond 功能可能因为各种原因不被支持，如由于 Rainbond 与 KubeBlocks 的设计差异，构建、滚动更新操作将不会得到支持；在 Rainbond 的团队空间中的储存分配量并不会计算为 KubeBlocks 数据库集群分配的储存量；以目前 KubeBlocks 在 Rainbond 中的集成度，`应用模板` 及其相关功能暂不被支持**
 
