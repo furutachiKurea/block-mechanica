@@ -16,7 +16,7 @@ image:
 .PHONY: build
 build:
 	go mod download
-	go build -o bin/block_mechanica main.go
+	go build -o bin/kb-adapter main.go
 
 # 运行测试
 .PHONY: test

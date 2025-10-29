@@ -1,14 +1,9 @@
-# [Block Mechanica](https://github.com/furutachiKurea/block-mechanica)
+# [Kubeblock Adapter for Rainbond Plugin](https://github.com/furutachiKurea/kb-adapter-rbdplugin)(原 Block Mechanica)
 
-```txt
-    ____  __           __      __  ___          __                _           
-   / __ )/ /___  _____/ /__   /  |/  /__  _____/ /_  ____ _____  (_)________ _
-  / __  / / __ \/ ___/ //_/  / /|_/ / _ \/ ___/ __ \/ __ `/ __ \/ / ___/ __ `/
- / /_/ / / /_/ / /__/ ,<    / /  / /  __/ /__/ / / / /_/ / / / / / /__/ /_/ / 
-/_____/_/\____/\___/_/|_|  /_/  /_/\___/\___/_/ /_/\__,_/_/ /_/_/\___/\__,_/  
-```
+> 本项目原名为 "Block Mechanica"，现已更名为 "Kubeblock Adapter for Rainbond Plugin"，
+> 后续项目中两个名称也许会共存，应认为其等价
 
-Block Mechanica 是一个轻量化的 Kubernetes 服务，通过使用 Echo 编写的 API 服务实现 KubeBlocks 与 Rainbond 的集成
+Kubeblock Adapter for Rainbond Plugin <del>Block Mechanica</del> 是一个轻量化的 Kubernetes 服务，通过使用 Echo 编写的 API 服务实现 KubeBlocks 与 Rainbond 的集成
 
 ## How does it work?
 
@@ -16,7 +11,7 @@ Block Mechanica 是一个轻量化的 Kubernetes 服务，通过使用 Echo 编�
 
 ## 如何部署
 
-[在 Rainbond 中部署 KubeBlocks 和 Block Mechanica](./doc/Deploy.md)
+[在 Rainbond 中部署 KubeBlocks 和 Kubeblock Adapter for Rainbond Plugin ](./doc/Deploy.md)
 
 ## 如何在 Rainbond 中使用 KubeBlocks
 
@@ -70,7 +65,7 @@ Block Mechanica 是一个轻量化的 Kubernetes 服务，通过使用 Echo 编�
   make image TAG=v1.0.0
   ```
 
-- 构建可执行文件到 bin/block_mechanica
+- 构建可执行文件到 bin/kb-adapter
 
   ```sh
   make build
@@ -90,7 +85,7 @@ Block Mechanica 是一个轻量化的 Kubernetes 服务，通过使用 Echo 编�
 
 ## Contributing
 
-[开发仓库](https://github.com/furutachiKurea/block-mechanica)
+[开发仓库](https://github.com/furutachiKurea/kb-adapter-rbdplugin)
 
 欢迎提交 PR 和 Issue，感谢您的贡献！
 

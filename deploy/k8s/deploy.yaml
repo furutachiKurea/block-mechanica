@@ -1,27 +1,27 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: block-mechanica
+  name: kb-adapter-rbdplugin
   namespace: rbd-system
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: block-mechanica
+      app: kb-adapter-rbdplugin
   template:
     metadata:
       labels:
-        app: block-mechanica
+        app: kb-adapter-rbdplugin
     spec:
-      serviceAccountName: block-mechanica-sa
+      serviceAccountName: kb-adapter-rbdplugin-sa
       containers:
-        - name: block-mechanica
-          image: crpi-aoz6mrz2bbre0gxx.cn-hangzhou.personal.cr.aliyuncs.com/block-mechanica/block-mechanica:0.13.2
+        - name: kb-adapter-rbdplugin
+          image: crpi-aoz6mrz2bbre0gxx.cn-hangzhou.personal.cr.aliyuncs.com/block-mechanica/kb-adapter:v0.1.0
           ports:
             - containerPort: 8080
           envFrom:
             - configMapRef:
-                name: block-mechanica-config
+                name: kb-adapter-rbdplugin-config
           env:
             - name: POD_NAME
               valueFrom:
@@ -51,12 +51,12 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: block-mechanica-config
+  name: kb-adapter-rbdplugin-config
   namespace: rbd-system
 data:
   HOST: "0.0.0.0"
   PORT: "8080"
-  SERVICE_NAME: "block-mechanica"
+  SERVICE_NAME: "kb-adapter-rbdplugin"
   READINESS_PATH: "/readyz"
   LIVENESS_PATH: "/livez"
 
@@ -64,13 +64,13 @@ data:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: block-mechanica-sa
+  name: kb-adapter-rbdplugin-sa
   namespace: rbd-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: block-mechanica-role
+  name: kb-adapter-rbdplugin-role
 rules:
   - apiGroups: [""]
     resources: ["pods"]
@@ -125,25 +125,25 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: block-mechanica-rolebinding
+  name: kb-adapter-rbdplugin-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: block-mechanica-role
+  name: kb-adapter-rbdplugin-role
 subjects:
   - kind: ServiceAccount
-    name: block-mechanica-sa
+    name: kb-adapter-rbdplugin-sa
     namespace: rbd-system
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: block-mechanica
+  name: kb-adapter-rbdplugin
   namespace: rbd-system
 spec:
   selector:
-    app: block-mechanica
+    app: kb-adapter-rbdplugin
   ports:
     - protocol: TCP
       port: 80
